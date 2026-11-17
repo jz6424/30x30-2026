@@ -1,0 +1,14 @@
+{
+  "name": "set-to-post",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Confessionail Studio: nail set photos to approved Instagram posts",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": { "node": ">=18" },
+  "optionalDependencies": {
+    "@anthropic-ai/sdk": "*"
+  }
+}

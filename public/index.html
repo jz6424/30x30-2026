@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#F6EFE4">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Set → Post">
+  <title>Set → Post · Confessionail</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icon-180.png">
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="mark">C</span><div><div class="name">Confessionail</div><div class="sub">Set → Post</div></div></div>
+    <nav class="tabs">
+      <a href="#/upload" data-tab="upload">Upload</a>
+      <a href="#/posts" data-tab="posts">Posts <span class="badge" id="badge" hidden></span></a>
+    </nav>
+  </header>
+  <div id="a2hs" class="hint" hidden>
+    <span>Tip: tap <b>Share</b> then <b>Add to Home Screen</b> to open this like an app.</span>
+    <button class="link" id="a2hs-close">Got it</button>
+  </div>
+  <main id="app"></main>
+  <div id="toast" class="toast" hidden></div>
+  <div id="modal" class="modal" hidden></div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

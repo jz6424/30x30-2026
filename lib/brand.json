@@ -1,0 +1,29 @@
+{
+  "name": "Confessionail Studio",
+  "handle": "@confessionailstudio",
+  "address": "724 S Hill St, Los Angeles 90014 (Historic Core, DTLA)",
+  "hours": "Open 24 hours. Walk-ins 9am to 8pm, appointments any hour after that.",
+  "bookingUrl": "{{BOOKING_URL}}",
+  "taglines": [
+    "Private luxury. Perfect nails.",
+    "Every great confession starts with relaxation",
+    "Beauty, self-care & Downtown LA vibes!"
+  ],
+  "houseStyle": "Close-ups of almond nails on marble or white fur, warm cream and gold tones, nails filling the frame.",
+  "igVoice": "Casual, playful, emoji-heavy. Almost always mentions DTLA and open 24 hours. Example: \"We'll definitely have you feeling like Nicole Kidman 🤭😝 come see us in DTLA - open 24 hours!\"",
+  "fbVoice": "Same message in fuller sentences, fewer emojis.",
+  "hashtags": ["#confessionail", "#nailsalon", "#nailart", "#nailstudio", "#lanailtech", "#24hrnailsalon", "#dtla"],
+  "provenHook": "Did you know you can get your nails done at 2am!?",
+  "services": [
+    { "id": "confession", "name": "The Confession", "group": "Manicure", "price": "$30", "gelPrice": "$50" },
+    { "id": "spill-the-tea", "name": "Spill The Tea", "group": "Manicure", "price": "$70", "gelPrice": "$90" },
+    { "id": "open-session", "name": "Open Session", "group": "Manicure", "price": "$100", "gelPrice": "$120" },
+    { "id": "custom", "name": "Custom Nails", "group": "Enhancement", "price": "$150+" },
+    { "id": "russian-gel", "name": "Russian Gel", "group": "Enhancement", "price": "$100+" },
+    { "id": "sculpted-gel", "name": "Sculpted Gel", "group": "Enhancement", "price": "$100+" },
+    { "id": "acrylic", "name": "Acrylic", "group": "Enhancement", "price": "$85+" },
+    { "id": "polygel", "name": "Hard Gel / Polygel", "group": "Enhancement", "price": "$80+" },
+    { "id": "gel-x", "name": "Gel X", "group": "Enhancement", "price": "$75+" },
+    { "id": "builder-gel", "name": "Builder Gel / Dip", "group": "Enhancement", "price": "$70+" }
+  ]
+}
