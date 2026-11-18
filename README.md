@@ -4,7 +4,17 @@ A phone-first hub for Confessionail Studio (24-hour nail salon, DTLA). Nail tech
 
 Built for Converge.AI at Stanford, Nov 20 2026.
 
-## Run it on a phone
+## Host it (fixed link for phones)
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/jz6424/30x30-2026)
+
+Sign in to Render, click the button, and deploy. Render reads `render.yaml`, runs `npm install` and `node server.js`, and gives you a fixed `https://….onrender.com` link to open on every phone. Add `ANTHROPIC_API_KEY` in Render's settings for Claude scoring and captions, or leave it empty for the offline mode.
+
+Free plan limits: the app sleeps after 15 minutes without visits, so the first load after that takes about a minute (open it before the demo), and saved sets are cleared when it restarts or redeploys. Anyone with the link can open the app.
+
+GitHub Pages won't work: it serves static files only, so there is no server for techs and Tina to share sets or for captions.
+
+## Run it on a phone from your computer
 
 ```bash
 npm run phone

@@ -1,0 +1,14 @@
+# One-click deploy on Render (free plan): https://render.com/deploy?repo=https://github.com/jz6424/30x30-2026
+services:
+  - type: web
+    name: confessionail-set-to-post
+    runtime: node
+    plan: free
+    buildCommand: npm install --no-audit --no-fund
+    startCommand: node server.js
+    healthCheckPath: /api/config
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: ANTHROPIC_API_KEY
+        sync: false # optional: paste a key in Render for Claude scoring and captions
