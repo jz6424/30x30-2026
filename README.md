@@ -12,7 +12,9 @@ npm run phone
 
 This starts the app and prints an HTTPS link and a QR code. Scan the code with the phone camera, then use Add to Home Screen so it opens like an app. The share sheet with photos and the clipboard only work over HTTPS.
 
-The link comes from a free Cloudflare quick tunnel if `cloudflared` is installed (`brew install cloudflared`, recommended), otherwise from localtunnel via npx (it asks for a one-time password, which is your computer's public IP). The link changes on every run. For a fixed link, deploy the app to any Node host.
+The link comes from a free Cloudflare quick tunnel. If `cloudflared` isn't installed, the script fetches it through npx the first time (`brew install cloudflared` makes startup faster). `USE_LOCALTUNNEL=1 npm run phone` uses localtunnel instead, which can drop photo uploads.
+
+Photos upload one at a time as small JPEGs (1440 px), with one retry each, so a slow connection or a tunnel's size limit doesn't fail the whole set. The link changes on every run. For a fixed link, deploy the app to any Node host.
 
 On a computer: `node server.js` (or `npm start`), then open http://localhost:3000.
 

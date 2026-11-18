@@ -25,8 +25,13 @@ let tunnel, pattern, note = '';
 if (has('cloudflared')) {
   tunnel = spawn('cloudflared', ['tunnel', '--no-autoupdate', '--url', `http://localhost:${PORT}`]);
   pattern = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/;
+} else if (process.env.USE_LOCALTUNNEL !== '1') {
+  // No cloudflared installed: fetch it through npm (the "cloudflared" package downloads the binary).
+  console.log('  cloudflared not found, fetching it through npx (one time). Faster next time: brew install cloudflared');
+  tunnel = spawn(npx, ['-y', 'cloudflared', 'tunnel', '--no-autoupdate', '--url', `http://localhost:${PORT}`]);
+  pattern = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/;
 } else {
-  console.log('  cloudflared not found, using localtunnel. (For a smoother link: brew install cloudflared)');
+  console.log('  Using localtunnel. It can drop photo uploads; cloudflared is more reliable (brew install cloudflared)');
   tunnel = spawn(npx, ['-y', 'localtunnel', '--port', PORT]);
   pattern = /https:\/\/\S+\.loca\.lt/;
   note = '  localtunnel asks for a password the first time: it is this computer\'s public IP (see https://loca.lt/mytunnelpassword).\n';

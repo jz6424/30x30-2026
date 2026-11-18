@@ -24,10 +24,13 @@ const icon = (name) => `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke=
 
 // ---------- helpers ----------
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// localtunnel shows a reminder page to browsers unless this header is sent.
+const TUNNEL_HEADERS = { 'bypass-tunnel-reminder': '1' };
 async function api(path, opts = {}) {
-  const res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts, body: opts.body ? JSON.stringify(opts.body) : undefined });
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.error || 'Something went wrong');
+  const res = await fetch(path, { headers: { 'Content-Type': 'application/json', ...TUNNEL_HEADERS }, ...opts, body: opts.body ? JSON.stringify(opts.body) : undefined });
+  let json = null;
+  try { json = await res.json(); } catch {}
+  if (!res.ok || !json) throw new Error(json?.error || `Server error ${res.status}. Try again`);
   return json;
 }
 let toastTimer;
@@ -94,7 +97,7 @@ async function prefetchFiles(post) {
   const key = post.id + ':' + [post.heroId, ...post.carouselIds].join(',');
   if (state.filesCache[post.id]?.key === key) return state.filesCache[post.id].files;
   const files = await Promise.all(orderedPhotos(post).map(async (p, i) => {
-    const blob = await (await fetch(p.url)).blob();
+    const blob = await (await fetch(p.url, { headers: TUNNEL_HEADERS })).blob();
     return new File([blob], `confessionail-${post.id}-${i + 1}.jpg`, { type: 'image/jpeg' });
   }));
   state.filesCache[post.id] = { key, files };
@@ -232,24 +235,28 @@ async function addFiles(files) {
   }
 }
 
-function uploadWithProgress(url, body) {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', url);
-    xhr.setRequestHeader('Content-Type', 'application/json');
-    const msg = () => document.getElementById('up-msg');
-    xhr.upload.onprogress = (e) => {
-      if (!e.lengthComputable || !msg()) return;
-      const pct = Math.round((e.loaded / e.total) * 100);
-      msg().textContent = pct < 100 ? `Uploading photos… ${pct}%` : 'Checking framing, background and house style, then writing captions.';
-    };
-    xhr.onload = () => {
-      let json = {}; try { json = JSON.parse(xhr.responseText); } catch {}
-      xhr.status < 300 ? resolve(json) : reject(new Error(json.error || 'Upload failed. Check your connection and try again.'));
-    };
-    xhr.onerror = () => reject(new Error('Upload failed. Check your connection and try again.'));
-    xhr.send(JSON.stringify(body));
+// Upload one photo as raw JPEG bytes. Small requests get through tunnels and
+// weak phone signal; each photo is retried once.
+function uploadPhoto(dataUrl, onProgress) {
+  const attempt = () => new Promise((resolve, reject) => {
+    fetch(dataUrl).then((r) => r.blob()).then((blob) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/uploads');
+      xhr.setRequestHeader('Content-Type', 'image/jpeg');
+      xhr.setRequestHeader('bypass-tunnel-reminder', '1');
+      xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
+      xhr.onload = () => {
+        let json = {}; try { json = JSON.parse(xhr.responseText); } catch {}
+        if (xhr.status < 300 && json.uploadId) resolve(json.uploadId);
+        else reject(new Error(json.error || `Upload failed (server said ${xhr.status})`));
+      };
+      xhr.onerror = () => reject(new Error('Upload failed: no connection to the server'));
+      xhr.ontimeout = () => reject(new Error('Upload timed out'));
+      xhr.timeout = 60000;
+      xhr.send(blob);
+    }, reject);
   });
+  return attempt().catch(() => attempt());
 }
 
 async function sendSet() {
@@ -258,18 +265,26 @@ async function sendSet() {
   modal(`<div style="text-align:center"><div class="spinner"></div><h2>Picking the best shots</h2><p class="muted" id="up-msg">Uploading photos…</p></div>`);
   try {
     const started = Date.now();
-    const { post } = await uploadWithProgress('/api/sets', {
+    const msg = (t) => { const el = document.getElementById('up-msg'); if (el) el.textContent = t; };
+    const total = u.results.length;
+    for (const [i, r] of u.results.entries()) {
+      if (r.uploadId) continue; // already sent on an earlier try
+      // Skipped photos go up as small thumbnails to save phone data.
+      r.uploadId = await uploadPhoto(r.dropped || r.duplicateOf ? r.thumbUrl : r.dataUrl, (f) => msg(`Uploading photo ${i + 1} of ${total}… ${Math.round(f * 100)}%`));
+    }
+    msg('Checking framing, background and house style, then writing captions');
+    const { post } = await api('/api/sets', { method: 'POST', body: {
         tech: u.tech, serviceId: u.serviceId,
-        // Skipped photos go up as small thumbnails to save phone data.
-        photos: u.results.map(({ id, name, dataUrl, thumbUrl, width, height, checks, features, pixelReason, dropped, duplicateOf }) => ({ id, name, dataUrl: dropped || duplicateOf ? thumbUrl : dataUrl, width, height, checks, features, pixelReason, dropped, duplicateOf })),
-    });
+        photos: u.results.map(({ id, name, uploadId, width, height, checks, features, pixelReason, dropped, duplicateOf }) => ({ id, name, uploadId, width, height, checks, features, pixelReason, dropped, duplicateOf })),
+    } });
     console.info(`Set processed in ${((Date.now() - started) / 1000).toFixed(1)}s`);
     setPost(post);
     u.results = []; u.serviceId = null;
     modal(null);
     location.hash = `#/sent/${post.id}`;
   } catch (err) {
-    modal(null); toast(err.message);
+    for (const r of u.results) delete r.uploadId; // resend everything next time
+    modal(null); toast(err.message, 6000);
   } finally {
     u.sending = false;
   }

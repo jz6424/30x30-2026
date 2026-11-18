@@ -14,10 +14,12 @@ const PUBLIC = path.join(ROOT, 'public');
 const DATA = path.join(ROOT, 'data');
 const PHOTOS = path.join(DATA, 'photos');
 const DB_FILE = path.join(DATA, 'db.json');
+const UPLOADS = path.join(DATA, 'uploads');
 const PORT = Number(process.env.PORT || 3000);
 const brand = JSON.parse(fs.readFileSync(path.join(ROOT, 'lib/brand.json'), 'utf8'));
 
 fs.mkdirSync(PHOTOS, { recursive: true });
+fs.mkdirSync(UPLOADS, { recursive: true });
 
 // ---------- tiny JSON "database" ----------
 let db = { posts: [] };
@@ -73,8 +75,14 @@ async function buildPost({ tech, serviceId, photos }) {
 
   const stored = photos.slice(0, 30).map((p, i) => {
     const pid = `p${i + 1}`;
-    const b64 = String(p.dataUrl || '').replace(/^data:image\/\w+;base64,/, '');
-    fs.writeFileSync(path.join(dir, `${pid}.jpg`), Buffer.from(b64, 'base64'));
+    // Photos arrive one by one through /api/uploads (small requests survive
+    // tunnels and slow phone data); dataUrl is still accepted for scripts.
+    const dest = path.join(dir, `${pid}.jpg`);
+    const up = /^[a-f0-9-]{36}$/.test(p.uploadId || '') ? path.join(UPLOADS, `${p.uploadId}.jpg`) : null;
+    if (up && fs.existsSync(up)) fs.renameSync(up, dest);
+    else if (p.dataUrl) fs.writeFileSync(dest, Buffer.from(String(p.dataUrl).replace(/^data:image\/\w+;base64,/, ''), 'base64'));
+    else throw Object.assign(new Error(`Photo ${i + 1} didn’t arrive. Try again`), { status: 400 });
+    const b64 = fs.readFileSync(dest).toString('base64');
     return {
       id: pid,
       clientId: p.id,
@@ -155,6 +163,14 @@ function send(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
   res.end(JSON.stringify(body));
 }
+function readRaw(req, limit) {
+  return new Promise((resolve, reject) => {
+    let size = 0; const chunks = [];
+    req.on('data', (c) => { size += c.length; if (size > limit) { reject(Object.assign(new Error('Photo too large'), { status: 413 })); req.destroy(); } else chunks.push(c); });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
 function readBody(req, limit = 80 * 1024 * 1024) {
   return new Promise((resolve, reject) => {
     let size = 0; const chunks = [];
@@ -185,6 +201,13 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, { brand, visionProvider: vp.label, live: vp.name === 'claude', phoneUrl });
       }
       if (req.method === 'GET' && url.pathname === '/api/posts') return send(res, 200, { posts: db.posts });
+      if (req.method === 'POST' && url.pathname === '/api/uploads') {
+        const buf = await readRaw(req, 20 * 1024 * 1024);
+        if (buf.length < 100 || buf[0] !== 0xff || buf[1] !== 0xd8) return send(res, 400, { error: 'That file isn’t a JPEG photo' });
+        const uploadId = crypto.randomUUID();
+        fs.writeFileSync(path.join(UPLOADS, `${uploadId}.jpg`), buf);
+        return send(res, 200, { uploadId });
+      }
       if (req.method === 'POST' && url.pathname === '/api/sets') {
         const body = await readBody(req);
         if (!Array.isArray(body.photos) || !body.photos.length) return send(res, 400, { error: 'Add at least one photo.' });
@@ -252,8 +275,8 @@ const server = http.createServer(async (req, res) => {
     if (parts[0] === 'photos') return serveFile(res, PHOTOS, parts.slice(1).join('/'));
     return serveFile(res, PUBLIC, url.pathname === '/' ? 'index.html' : url.pathname);
   } catch (err) {
-    console.error(err);
-    return send(res, 500, { error: err.message });
+    console.error(`[${req.method} ${url.pathname}]`, err.message);
+    return send(res, err.status || 500, { error: err.message });
   }
 });
 

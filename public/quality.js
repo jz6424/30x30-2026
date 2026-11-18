@@ -8,7 +8,7 @@
 // Nothing here changes the photo except resizing it for upload.
 
 const ANALYZE_SIZE = 512;
-const UPLOAD_SIZE = 1600;
+const UPLOAD_SIZE = 1440; // plenty for Instagram (1080 wide), small enough for phone data
 
 export const LIMITS = {
   blurDrop: 18,      // Laplacian variance (sharpest tiles) below this = too blurry
@@ -161,7 +161,7 @@ export async function analyzeFile(file, id) {
 
   // Upload copy: resized only.
   const up = draw(bitmap, UPLOAD_SIZE);
-  const dataUrl = up.canvas.toDataURL('image/jpeg', 0.86);
+  const dataUrl = up.canvas.toDataURL('image/jpeg', 0.85);
   const thumbUrl = draw(bitmap, 360).canvas.toDataURL('image/jpeg', 0.8);
 
   const hash = dHash(bitmap);
