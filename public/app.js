@@ -842,26 +842,68 @@ function techJobCard(j) {
   </div>`;
 }
 
+// ----- on-call time helpers -----
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const WEEK = [1, 2, 3, 4, 5, 6, 0]; // show Monday first
+function fmtHM(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  return `${h % 12 || 12}${m ? ':' + String(m).padStart(2, '0') : ''} ${h < 12 ? 'AM' : 'PM'}`;
+}
+const daysLabel = (days) => WEEK.filter((d) => days.includes(d)).map((d) => DAY_NAMES[d]).join(', ');
+const windowLabel = (w) => `${daysLabel(w.days)}, ${fmtHM(w.start)} to ${fmtHM(w.end)}`;
+function availabilityLine(oc) {
+  if (oc.on) return oc.until ? `On call until ${fmtTime(oc.until)}` : 'On call until turned off';
+  if (oc.by === 'hours') return `On call until ${fmtHM(oc.windowEnd)}, regular hours`;
+  return 'Off call';
+}
+state.view.ocPick = false;
+state.view.addHours = null;
+
 function renderTechJobs() {
   const { oncall: oc, open, mine } = state.jobs;
   const booked = mine.filter((j) => j.status === 'confirmed');
   const me = state.config.brand.techs.find((t) => t.id === state.user.id);
   $app.innerHTML = `
     <h1>Jobs</h1>
-    <div class="card oncall ${oc.on ? 'is-on' : ''}">
-      <div class="oc-row"><div><div class="oc-t">${oc.on ? 'You’re on call' : 'You’re off call'}</div>
-        <div class="muted small">${oc.on ? `Requests for ${esc((me?.locationIds || []).map(locName).filter(Boolean).join(' and ') || 'your studio')} come here` : 'Turn on to get job requests from clients'}</div></div>
+    <div class="card oncall ${oc.activeNow ? 'is-on' : ''}">
+      <div class="oc-row"><div><div class="oc-t">${esc(availabilityLine(oc))}</div>
+        <div class="muted small">${oc.activeNow ? `Requests for ${esc((me?.locationIds || []).map(locName).filter(Boolean).join(' and ') || 'your studio')} come here` : 'Turn on to get job requests from clients'}</div></div>
         ${switchHtml('oc-on', oc.on, 'On call')}</div>
-      ${oc.on ? `
+      ${oc.on && !state.view.ocPick ? '<button type="button" class="link" id="oc-change" style="margin-top:8px;padding-left:0">Change how long</button>' : ''}
+      ${state.view.ocPick ? `
         <div class="oc-set">
-          <div class="lbl">Take jobs for</div>
-          <div class="seg" data-key="takes">${[['now', 'Right now'], ['later', 'Later'], ['both', 'Both']].map(([v, l]) => `<button type="button" data-v="${v}" class="${oc.takes === v ? 'on' : ''}">${l}</button>`).join('')}</div>
-          <div class="oc-row" style="margin-top:16px"><div><div class="lbl" style="margin:0">House calls</div><div class="muted small">Go to the client’s home, hotel or office</div></div>${switchHtml('oc-house', oc.houseCalls, 'House calls')}</div>
-          ${oc.houseCalls ? `<div class="lbl">How far you’ll go</div>${choice('radiusMi', oc.radiusMi, [3, 5, 10, 15, 25], (v) => `${v} mi`)}` : ''}
+          <div class="lbl">How long?</div>
+          <div class="chips" id="oc-for">
+            <button type="button" class="chip" data-for="60">1 hour</button>
+            <button type="button" class="chip" data-for="120">2 hours</button>
+            <button type="button" class="chip" data-for="240">4 hours</button>
+            <button type="button" class="chip" data-for="0">Until I turn it off</button>
+          </div>
+          <div class="lbl">Or until a time</div>
+          <div class="until-row"><input class="field" type="time" id="oc-until" step="900" aria-label="On call until"><button type="button" class="btn-primary" id="oc-until-go">Go on call</button></div>
+          <button type="button" class="link" id="oc-cancel" style="margin-top:8px;padding-left:0">Cancel</button>
         </div>` : ''}
+      <div class="oc-set">
+        <div class="lbl">Take jobs for</div>
+        <div class="seg" data-key="takes">${[['now', 'Right now'], ['later', 'Booked ahead'], ['both', 'Both']].map(([v, l]) => `<button type="button" data-v="${v}" class="${oc.takes === v ? 'on' : ''}">${l}</button>`).join('')}</div>
+        <div class="oc-row" style="margin-top:16px"><div><div class="lbl" style="margin:0">House calls</div><div class="muted small">Go to the client’s home, hotel or office</div></div>${switchHtml('oc-house', oc.houseCalls, 'House calls')}</div>
+        ${oc.houseCalls ? `<div class="lbl">How far you’ll go</div>${choice('radiusMi', oc.radiusMi, [3, 5, 10, 15, 25], (v) => `${v} mi`)}` : ''}
+      </div>
+      <div class="oc-set">
+        <div class="lbl">Regular hours</div>
+        <p class="muted small" style="margin-bottom:8px">You’re on call at these times every week, even with the switch off. Clients can book you ahead for them</p>
+        ${(oc.hours || []).map((w, i) => `<div class="hours-row"><span>${esc(windowLabel(w))}</span><button type="button" class="icon-btn" data-del-hours="${i}" aria-label="Remove ${esc(windowLabel(w))}">${icon('x')}</button></div>`).join('')}
+        ${state.view.addHours ? `
+          <div class="add-hours">
+            <div class="chips" id="ah-days">${WEEK.map((d) => `<button type="button" class="chip ${state.view.addHours.days.includes(d) ? 'on' : ''}" data-day="${d}">${DAY_NAMES[d]}</button>`).join('')}</div>
+            <div class="until-row"><label class="small">From<input class="field" type="time" id="ah-start" step="900" value="${state.view.addHours.start}"></label><label class="small">To<input class="field" type="time" id="ah-end" step="900" value="${state.view.addHours.end}"></label></div>
+            <p class="muted small">An end time earlier than the start runs past midnight</p>
+            <div class="row"><button type="button" class="btn-ghost" id="ah-cancel">Cancel</button><button type="button" class="btn-primary" id="ah-save">Add hours</button></div>
+          </div>` : '<button type="button" class="btn-line" id="ah-open" style="width:100%">Add regular hours</button>'}
+      </div>
     </div>
     <div class="section-label">Requests${open.length ? ` (${open.length})` : ''}</div>
-    ${open.length ? open.map(techJobCard).join('') : `<div class="card muted" style="text-align:center">${oc.on ? 'No requests right now. New ones show up here, and your phone buzzes' : 'You’re off call, so no requests come to you'}</div>`}
+    ${open.length ? open.map(techJobCard).join('') : `<div class="card muted" style="text-align:center">${oc.activeNow || oc.hours?.length ? 'No requests right now. New ones show up here, and your phone buzzes' : 'You’re off call, so no requests come to you'}</div>`}
     ${booked.length ? `<div class="section-label">Up next</div>${techJobCard(booked.sort((a, b) => new Date(a.start) - new Date(b.start))[0])}` : ''}
     ${mine.length > 1 || !booked.length ? `<div class="section-label">Your schedule</div>
     ${scheduleHtml(mine.filter((j) => j !== booked[0]))}` : ''}`;
@@ -871,7 +913,40 @@ function renderTechJobs() {
     catch (err) { toast(err.message); }
   };
   $app.onclick = async (e) => {
-    if (e.target.closest('#oc-on')) return saveOc({ on: !oc.on });
+    // Turning on asks how long; turning off is one tap.
+    if (e.target.closest('#oc-on')) { if (oc.on) { state.view.ocPick = false; return saveOc({ on: false }); } state.view.ocPick = true; return renderTechJobs(); }
+    if (e.target.closest('#oc-change')) { state.view.ocPick = true; return renderTechJobs(); }
+    if (e.target.closest('#oc-cancel')) { state.view.ocPick = false; return renderTechJobs(); }
+    const f = e.target.closest('[data-for]');
+    if (f) { state.view.ocPick = false; return saveOc(Number(f.dataset.for) ? { on: true, forMinutes: Number(f.dataset.for) } : { on: true }); }
+    if (e.target.closest('#oc-until-go')) {
+      const v = document.getElementById('oc-until').value;
+      if (!v) return toast('Pick a time first');
+      const [h, m] = v.split(':').map(Number);
+      const until = new Date(); until.setHours(h, m, 0, 0);
+      if (until <= new Date()) until.setDate(until.getDate() + 1); // a time earlier than now means tomorrow
+      state.view.ocPick = false;
+      return saveOc({ on: true, until: until.toISOString() });
+    }
+    if (e.target.closest('#ah-open')) { state.view.addHours = { days: [], start: '20:00', end: '02:00' }; return renderTechJobs(); }
+    if (e.target.closest('#ah-cancel')) { state.view.addHours = null; return renderTechJobs(); }
+    const day = e.target.closest('[data-day]');
+    if (day) {
+      const ah = state.view.addHours, d = Number(day.dataset.day);
+      ah.start = document.getElementById('ah-start').value || ah.start; ah.end = document.getElementById('ah-end').value || ah.end;
+      ah.days = ah.days.includes(d) ? ah.days.filter((x) => x !== d) : [...ah.days, d];
+      return renderTechJobs();
+    }
+    if (e.target.closest('#ah-save')) {
+      const ah = state.view.addHours;
+      const w = { days: ah.days, start: document.getElementById('ah-start').value, end: document.getElementById('ah-end').value };
+      if (!w.days.length) return toast('Pick at least one day');
+      try { await api('/api/oncall', { method: 'PUT', body: { hours: [...(oc.hours || []), w] } }); state.view.addHours = null; await loadJobs(); renderTechJobs(); toast('Regular hours added'); }
+      catch (err) { toast(err.message); }
+      return;
+    }
+    const del = e.target.closest('[data-del-hours]');
+    if (del) return saveOc({ hours: oc.hours.filter((_, i) => i !== Number(del.dataset.delHours)) });
     if (e.target.closest('#oc-house')) return saveOc({ houseCalls: !oc.houseCalls });
     const pick = e.target.closest('[data-key] [data-v]');
     if (pick) { const key = pick.closest('[data-key]').dataset.key; const v = pick.dataset.v; return saveOc({ [key]: key === 'takes' ? v : Number(v) }); }
@@ -892,7 +967,7 @@ function ownerJobCard(r) {
   const s = state.jobs.settings;
   const statusLine = {
     searching: r.accepted.length && s.assign === 'owner' ? `<span class="status needs_approval">${r.accepted.length} said yes. Pick one</span>`
-      : r.waiting.length ? `<span class="status ready">Waiting on ${esc(r.waiting.join(', '))}</span>` : '<span class="status overdue">No one on call can take it</span>',
+      : r.waiting.length ? `<span class="status ready">Waiting on ${esc(r.waiting.join(', '))}</span>` : `<span class="status overdue">${r.when === 'now' ? 'No one on call can take it' : 'No one is free then'}</span>`,
     confirmed: `<span class="status ready">Booked with ${esc(r.techName)}</span>`,
     done: `<span class="status posted">Done by ${esc(r.techName)}</span>`,
     cancelled: `<span class="status posted">Cancelled by ${r.cancelledBy === 'studio' ? 'you' : 'the client'}</span>`,
@@ -932,8 +1007,8 @@ function renderOwnerJobs() {
     <div class="section-label" ${open.length ? '' : 'style="margin-top:0"'}>Schedule</div>
     ${scheduleHtml(sched, { who: true })}
     ${sched.filter((r) => r.status === 'confirmed').length ? `<details class="more"><summary>Manage booked jobs</summary>${sched.filter((r) => r.status === 'confirmed').map(ownerJobCard).join('')}</details>` : ''}
-    <div class="section-label">On call now (${teamHere.filter((t) => t.on).length} of ${teamHere.length})</div>
-    <div class="card team">${teamHere.length ? teamHere.map((t) => `<div class="team-row"><div><b>${esc(t.name)}</b><div class="muted small">${esc(t.locationIds.map(locName).filter(Boolean).join(', '))}</div></div><span class="status ${t.on ? 'ready' : 'posted'}">${t.on ? `On call${t.houseCalls ? ` · house calls ${t.radiusMi} mi` : ''}` : 'Off'}</span></div>`).join('') : '<p class="muted">No one works here yet. Add them in Admin</p>'}</div>
+    <div class="section-label">On call now (${teamHere.filter((t) => t.activeNow).length} of ${teamHere.length})</div>
+    <div class="card team">${teamHere.length ? teamHere.map((t) => `<div class="team-row"><div><b>${esc(t.name)}</b><div class="muted small">${esc(t.locationIds.map(locName).filter(Boolean).join(', '))}</div></div><span class="status ${t.activeNow ? 'ready' : 'posted'}">${esc(availabilityLine(t).replace('On call until turned off', 'On call').replace('Off call', 'Off'))}</span>${t.hours?.length || (t.activeNow && t.houseCalls) ? `<div class="muted small team-sub">${[t.hours?.length ? `Regular hours: ${t.hours.map(windowLabel).join('; ')}` : '', t.activeNow && t.houseCalls ? `House calls up to ${t.radiusMi} mi` : ''].filter(Boolean).map(esc).join('<br>')}</div>` : ''}</div>`).join('') : '<p class="muted">No one works here yet. Add them in Admin</p>'}</div>
     <div class="section-label">Who gets a job</div>
     <div class="card">
       <div class="seg" data-key="assign"><button type="button" data-v="first" class="${s.assign === 'first' ? 'on' : ''}">First to accept</button><button type="button" data-v="owner" class="${s.assign === 'owner' ? 'on' : ''}">I choose</button></div>
@@ -988,7 +1063,7 @@ async function pollJobs() {
       navigator.vibrate?.([120, 60, 120]);
     }
     knownJobs = new Set(ids);
-    if (location.hash.startsWith('#/jobs') && JSON.stringify(state.jobs) !== before && !$app.querySelector('button:disabled, details[open]')) renderJobs();
+    if (location.hash.startsWith('#/jobs') && JSON.stringify(state.jobs) !== before && !$app.querySelector('button:disabled, details[open]') && !state.view.ocPick && !state.view.addHours) renderJobs();
   } catch {}
 }
 setInterval(pollJobs, 4000);
@@ -1019,7 +1094,7 @@ async function renderAdmin(sub, id) {
     ${tab === 'team' ? `
       ${active.map((t) => `<a class="card list-item" href="#/admin/tech/${t.id}"><span class="mono-s">${esc(t.name[0])}</span><div class="meta"><div class="title">${esc(t.name)}${t.sample ? ' <span class="muted small">(sample)</span>' : ''}</div>
         <div class="muted small">${esc(t.locationIds.map(lname).filter(Boolean).join(', '))} · ${t.serviceIds.length} services</div>
-        <div class="muted small">${PIN_NOTE[t.pin]}${t.oncall.on ? ' · <span style="color:var(--ok)">On call</span>' : ''}</div></div><span class="chev">${icon('right')}</span></a>`).join('')}
+        <div class="muted small">${PIN_NOTE[t.pin]}${t.oncall.activeNow ? ` · <span style="color:var(--ok)">${esc(availabilityLine(t.oncall))}</span>` : ''}</div></div><span class="chev">${icon('right')}</span></a>`).join('')}
       <a class="btn btn-primary" href="#/admin/tech/new" style="margin-top:4px">Add an artist</a>
       ${gone.length ? `<div class="section-label">No longer on the team</div>${gone.map((t) => `<div class="card list-item"><div class="meta"><div class="title">${esc(t.name)}</div><div class="muted small">Can’t sign in. Their past work stays in Posts</div></div><button class="btn-ghost" style="min-height:44px" data-restore="${t.id}">Bring back</button></div>`).join('')}` : ''}
       <p class="muted small" style="margin-top:16px">Tina’s own PIN is set on the server (PIN_HASH_TINA). See the README</p>`

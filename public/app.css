@@ -254,3 +254,13 @@ details.more summary { cursor: pointer; color: var(--gold-ink); font-size: 15px;
 .form-error { min-height: 20px; color: var(--bad); font-size: 15px; margin: 0; }
 .mono-s { width: 40px; height: 40px; border-radius: 50%; border: 1.5px solid var(--gold); display: grid; place-items: center; font-family: var(--serif); font-size: 18px; flex: none; }
 .team-row .muted { font-weight: 400; }
+
+/* on call: how long, regular hours */
+.until-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: end; }
+.until-row label { display: grid; gap: 4px; color: var(--ink-2); }
+.oncall .field { width: 100%; min-height: 52px; padding: 12px 16px; border-radius: 12px; border: 1px solid rgba(43, 36, 32, .16); background: var(--card); font: inherit; font-size: 17px; color: var(--ink); }
+.hours-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 48px; border-top: 1px solid var(--line); font-size: 15px; }
+.hours-row:last-of-type { border-bottom: 1px solid var(--line); margin-bottom: 12px; }
+.add-hours { display: grid; gap: 12px; padding-top: 4px; }
+.team-row { flex-wrap: wrap; }
+.team-sub { flex-basis: 100%; margin: 2px 0 10px; }
