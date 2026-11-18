@@ -61,19 +61,51 @@ function placeCard(l, { withGallery = false } = {}) {
 }
 
 // ---------- pages ----------
+// ---------- the hour in Downtown LA ----------
+// The studio never closes, so the site leads with the time. 8pm to 6am it switches
+// to the night look. ?night or ?day in the address forces one for a demo.
+function laNow() {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', minute: '2-digit', hour12: true }).formatToParts(new Date());
+  const get = (t) => parts.find((p) => p.type === t)?.value || '';
+  const h24 = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', hourCycle: 'h23' }).format(new Date()));
+  return { h: get('hour'), m: get('minute'), ap: get('dayPeriod').toUpperCase(), h24 };
+}
+function isNight() {
+  const q = new URLSearchParams(location.search);
+  if (q.has('night')) return true;
+  if (q.has('day')) return false;
+  const { h24 } = laNow();
+  return h24 >= 20 || h24 < 6;
+}
+function applyTime() {
+  document.documentElement.toggleAttribute('data-night', isNight());
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', isNight() ? '#1F161B' : '#F4ECDF');
+  const el = document.getElementById('clock');
+  if (!el) return;
+  const t = laNow();
+  el.querySelector('.hh').textContent = t.h;
+  el.querySelector('.mm').textContent = t.m;
+  el.querySelector('.ap').textContent = t.ap;
+}
+setInterval(applyTime, 15_000);
+
 function home() {
   const latest = data.gallery[0];
-  const [tagline] = data.brand.taglines;
+  const t = laNow();
+  const n = onCallCount();
+  const lateLine = isNight()
+    ? 'Walk-ins end at 8pm, but the studio stays open. Request an artist and someone on call takes it.'
+    : 'Walk in 9am to 8pm. After that the studio stays open by appointment, any hour.';
   return `
     <div class="hero">
-      <div style="display:grid;gap:20px">
-        <span class="open">Open now · 24 hours</span>
-        <h1>${esc(tagline)}</h1>
-        <p class="lede">${openLocs().length > 1 ? `${openLocs().length} nail studios in Los Angeles` : "A nail studio in the Historic Core of Downtown LA"}. Walk in 9am to 8pm, or book any hour after that.</p>
-        <div class="actions"><a class="btn" ${bookAttrs()}>Book an appointment</a><a class="btn btn-line" href="/request" data-link>Request an artist</a></div>
-        <a class="oncall-line" href="/request" data-link><span class="${onCallCount() ? 'open' : 'soon'}">${onCallLine()}</span>${onCallCount() ? '<span>Get nails now, at the studio or at your place</span>' : '<span>Request a time and we’ll find you an artist</span>'}</a>
+      <div class="hero-text">
+        <h1><span class="clock" id="clock" aria-label="Time in Downtown LA"><span><span class="hh">${t.h}</span><span class="colon">:</span><span class="mm">${t.m}</span></span><span class="ap">${t.ap}</span></span>
+          <span class="where">in Downtown LA, and we’re open</span></h1>
+        <p class="lede">${esc(lateLine)}</p>
+        <div class="actions"><a class="btn" href="/request" data-link>Request an artist</a><a class="btn btn-line" ${bookAttrs()}>Book ahead</a></div>
+        <a class="oncall-line" href="/request" data-link><span class="${n ? 'open' : 'soon'}">${onCallLine()}</span><span>${n ? 'At the studio or at your place' : 'Request a time and we’ll find you an artist'}</span></a>
       </div>
-      ${latest ? `<div class="hero-photo" data-set="${latest.id}"><img src="${latest.photos[0].url}" alt="Latest set from the studio"><div class="caption-chip"><b>${esc(latest.service || 'Latest set')}</b> · by ${esc(techOf(latest.techId)?.name || latest.tech)}</div></div>` : ''}
+      ${latest ? `<div class="hero-photo" data-set="${latest.id}"><img src="${latest.photos[0].url}" alt="Latest set from the studio"><div class="caption-chip"><b>${esc(latest.service || 'Latest set')}</b><br>by ${esc(techOf(latest.techId)?.name || latest.tech)}</div></div>` : `<div class="hero-empty">The newest set from the studio shows here</div>`}
     </div>
     <section id="work">
       <div class="head"><h2>Latest work</h2></div>
@@ -96,7 +128,7 @@ function techPage(id) {
   return `
     <a class="back" href="/#artists" data-link>‹ All artists</a>
     <div class="profile">
-      <div class="top"><div class="mono big">${esc(t.name[0])}</div><div><h1>${esc(t.name)}</h1><p class="muted">Nail artist · ${esc(techLocs(t).map((l) => l.name).join(', ') || 'Confessionail')}</p>${(data.onCall || []).includes(t.id) ? '<span class="open" style="margin-top:4px">On call now</span>' : ''}</div></div>
+      <div class="top"><div class="mono big">${esc(t.name[0])}</div><div><h1>${esc(t.name)}</h1><p class="muted">Nail artist at ${esc(techLocs(t).map((l) => l.name).join(', ') || 'Confessionail')}</p>${(data.onCall || []).includes(t.id) ? '<span class="open" style="margin-top:4px">On call now</span>' : ''}</div></div>
       <p class="bio">${esc(t.bio)}</p>
       <div class="tags">${t.specialties.map((s) => `<span class="tag">${esc(s)}</span>`).join('')}</div>
       <div class="actions">
@@ -424,11 +456,12 @@ function render() {
   else html = notFound();
   $page.innerHTML = html;
   document.querySelectorAll('.nav nav a').forEach((a) => a.classList.toggle('on', a.getAttribute('href') === path));
-  document.getElementById('book-top').outerHTML = `<a class="btn btn-small" id="book-top" ${bookAttrs()}>Book</a>`;
+  document.getElementById('book-top').outerHTML = `<a class="btn btn-small" id="book-top" href="/request" data-link>Request</a>`;
   document.getElementById('foot').innerHTML = `
     <div><b style="font-family:var(--serif);font-size:17px;color:var(--ink);font-weight:500">${esc(data.brand.name)}</b></div>
     <div>${esc(data.brand.address)} · Open 24 hours</div>
     <div><a href="${esc(data.brand.instagramUrl)}" target="_blank" rel="noopener">${esc(data.brand.handle)}</a> · <a href="/studio">Staff</a></div>`;
+  applyTime();
   if (path === '/locations') drawMap();
   if (path === '/request') bindRequestForm();
   if (path.startsWith('/request/')) watchRequest(decodeURIComponent(path.split('/')[2]));
