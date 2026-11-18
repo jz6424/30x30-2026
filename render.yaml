@@ -16,6 +16,8 @@ services:
         generateValue: true # signs staff sign-in cookies
       - key: BOOKING_URL
         sync: false # the studio's booking page, for the public Book buttons
+      - key: AGENT_TOKEN
+        sync: false # optional: a long random secret that lets a Converge Covey agent use /api/agent
       # Staff PINs: set PIN_HASH_TINA, PIN_HASH_MIA, PIN_HASH_JASMINE, PIN_HASH_KIM
       # to the output of `npm run hash-pin -- <pin>`. Unset = demo PINs (see README).
       - key: PIN_HASH_TINA

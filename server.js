@@ -12,6 +12,7 @@ import { resolveBooking, addonAttributes } from './lib/menu.js';
 import { createAuth } from './lib/auth.js';
 import { createDispatch } from './lib/dispatch.js';
 import { activity } from './lib/activity.js';
+import { createAgentApi, agentAuthorized } from './lib/agent.js';
 import { setupTeam } from './lib/team.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -38,6 +39,7 @@ const findPost = (id) => db.posts.find((p) => p.id === id);
 const team = setupTeam(brand, db, save); // team + locations live in db from here on
 const auth = createAuth(brand, db, save);
 const dispatch = createDispatch(brand, db, save);
+const agentApi = createAgentApi({ brand, db, save, findPost, nextFreeSlot, activity, dispatch });
 setInterval(() => dispatch.sweep(), 30_000).unref();
 
 // New on-demand requests per IP: at most 8 an hour, so the form can't be spammed.
@@ -338,6 +340,12 @@ const server = http.createServer(async (req, res) => {
         if (req.method === 'POST' && parts[3] === 'cancel') { dispatch.cancel(r, 'client'); return send(res, 200, { request: dispatch.clientView(r) }); }
       }
 
+      // ----- outside AI agents (Converge Covey), with AGENT_TOKEN; see lib/agent.js -----
+      if (parts[1] === 'agent') {
+        if (!agentAuthorized(req)) return send(res, 401, { error: process.env.AGENT_TOKEN ? 'Wrong agent token' : 'The agent API is off. Set AGENT_TOKEN on the server to turn it on' });
+        return await agentApi.handle(req, res, { parts, url, readBody, send });
+      }
+
       // ----- staff only -----
       const user = auth.userFrom(req);
       if (!user) return send(res, 401, { error: 'Please sign in', signIn: true });
@@ -492,7 +500,7 @@ const server = http.createServer(async (req, res) => {
       // Photos of approved sets are public; others need a staff sign-in.
       const post = findPost(parts[1]);
       if (!post) return send(res, 404, { error: 'Not found' });
-      if (!isPublic(post)) {
+      if (!isPublic(post) && !agentAuthorized(req)) {
         const user = auth.userFrom(req);
         if (!user || (user.role !== 'owner' && post.techId !== user.id)) return send(res, 404, { error: 'Not found' });
       }

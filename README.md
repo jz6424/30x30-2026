@@ -125,6 +125,7 @@ The vision step is pluggable (`lib/vision.js`). Providers: `claude` (used when `
 - `lib/dispatch.js`: on-demand requests: who qualifies, schedule clashes, accept, assign, expiry.
 - `lib/team.js`: the team and locations that Tina edits in Admin.
 - `lib/activity.js`: the counts behind Admin → Activity.
+- `lib/agent.js`: the Agent API for Converge (Covey). It's off until `AGENT_TOKEN` is set; see below.
 - `lib/auth.js`: PIN sign-in, signed session cookie, rate limit.
 - `scripts/hash-pin.js`: `npm run hash-pin -- <pin>` prints the value for a `PIN_HASH_<ID>` env var.
 
@@ -146,3 +147,12 @@ The vision step is pluggable (`lib/vision.js`). Providers: `claude` (used when `
 ## Upgrade path
 
 Direct auto-publishing through the Meta Graph API is a later upgrade. It needs an Instagram Business account linked to a Facebook Page and an approved Meta app. The share button lets the studio start on day one without any of that.
+
+## Working with Converge (Covey)
+
+The app stays the system of record. A Covey agent can help with the content through `/api/agent`. It can draft captions, give a second opinion on the photo pick, spread approved posts across the calendar and read team activity. It can't approve, post, delete or see clients' details, and Tina still approves everything in `/studio`.
+
+1. In Render, set `AGENT_TOKEN` to a long random string, for example `openssl rand -hex 32`. The API stays off without it.
+2. Give Covey the same value as a secret, then paste the prompt in [`docs/converge-prompt.md`](docs/converge-prompt.md).
+3. Calls send `Authorization: Bearer <AGENT_TOKEN>`. `GET /api/agent` lists the endpoints.
+
