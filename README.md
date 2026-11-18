@@ -39,7 +39,7 @@ ANTHROPIC_API_KEY=sk-ant-... npm start
 
 ## The flow
 
-1. **Upload** (nail tech): enter a name, tap the service, add 5 to 20 photos. The phone checks each photo as it is added.
+1. **Upload** (nail tech): enter a name, pick one service from the menu (with full set or fill, or hands or toes, where it applies), tick any add-ons, then add 5 to 20 photos. The menu and prices live in `lib/brand.json`; captions only use those prices. The phone checks each photo as it is added.
    The upload finishes as soon as the photos are saved. The tech can close the app; everything after this runs on the server.
 2. **Pick** (server, in the background): the photos that passed go to the vision model, get scored, and become the post: the best photo first, then up to 4 more, with a detail close-up second.
 3. **Caption** (server, in the background, right after picking): three options (A Short & playful, B Detail with service and price, C 24-hour hook), each with an Instagram and a Facebook version. Buttons: Edit, Shorter, More playful, New options.

@@ -4,7 +4,7 @@ const $app = document.getElementById('app');
 const state = {
   config: null,
   posts: [],
-  upload: { tech: localStorage.getItem('tech') || '', serviceId: null, results: [], analyzing: 0, sending: false },
+  upload: { tech: localStorage.getItem('tech') || '', serviceId: null, option: null, gel: false, addons: {}, menuOpen: true, results: [], analyzing: 0, sending: false },
   view: { channel: 'ig', editing: false, postsTab: 'needs_approval' },
   filesCache: {},        // postId -> File[] (prefetched so Share runs inside one tap)
   awaitingConfirm: null, // postId shared, ask "Did you post it?" on return
@@ -47,6 +47,10 @@ function modal(html) {
 }
 const isPhone = () => /iphone|ipad|ipod|android/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /macintosh/i.test(navigator.userAgent));
 const service = (id) => state.config?.brand.services.find((s) => s.id === id);
+const cap = (t) => (t ? t[0].toUpperCase() + t.slice(1) : t);
+// Title and detail line for a set, from the tech's menu picks.
+const setTitle = (p) => p.booking?.serviceName || service(p.serviceId)?.name || 'Nail set';
+const setDetail = (p) => (p.booking ? [cap(p.booking.name.split(', ').slice(1).join(', ')), ...p.booking.addons.map((x) => x.name)].filter(Boolean).join(' · ') : '');
 const photo = (post, id) => post.photos.find((p) => p.id === id);
 const isOverdue = (p) => p.status === 'ready' && p.scheduledFor && new Date(p.scheduledFor) < new Date();
 function fmtSlot(iso) {
@@ -169,7 +173,6 @@ function flushTaps() { const t = state.taps; state.taps = 0; return t; }
 // ---------- Upload (nail tech) ----------
 function renderUpload() {
   const u = state.upload;
-  const services = state.config.brand.services;
   const kept = u.results.filter((r) => !r.dropped && !r.duplicateOf);
   const tiles = u.results.map((r) => {
     let tag = `<span class="tag ok"><i class="dot"></i>${esc(r.pixelReason)}</span>`, cls = '';
@@ -184,10 +187,7 @@ function renderUpload() {
     <div class="section-label">Your name</div>
     <input type="text" id="tech" value="${esc(u.tech)}" placeholder="e.g. Kim" autocomplete="name">
 
-    <div class="section-label">Service</div>
-    <div class="chips" id="services">
-      ${services.map((s) => `<button class="chip ${u.serviceId === s.id ? 'on' : ''}" data-id="${s.id}">${esc(s.name)}<small>${esc(s.gelPrice ? s.price + '/' + s.gelPrice : s.price)}</small></button>`).join('')}
-    </div>
+    ${menuHtml(u)}
 
     <div class="section-label">Photos</div>
     <div class="row">
@@ -207,14 +207,72 @@ function renderUpload() {
     </div></div>`;
 
   document.getElementById('tech').oninput = (e) => { u.tech = e.target.value; localStorage.setItem('tech', u.tech); };
-  document.getElementById('services').onclick = (e) => {
-    const b = e.target.closest('[data-id]'); if (!b) return;
-    u.serviceId = b.dataset.id; renderUpload();
+  document.getElementById('menu').onclick = (e) => {
+    const t = e.target.closest('[data-svc],[data-opt],[data-gel],[data-change],[data-addon],[data-aopt]');
+    if (!t) return;
+    const brand = state.config.brand;
+    const d = t.dataset;
+    if (d.svc) {
+      const s = brand.services.find((x) => x.id === d.svc);
+      u.serviceId = s.id; u.option = s.options?.[0]?.id || null; u.gel = false; u.menuOpen = false;
+    } else if (d.opt) u.option = d.opt;
+    else if (d.gel) u.gel = !u.gel;
+    else if (d.change != null) u.menuOpen = true;
+    else if (d.addon) {
+      const next = { ...u.addons };
+      if (d.addon in next) u.addons = Object.fromEntries(Object.entries(next).filter(([k]) => k !== d.addon));
+      else u.addons = { ...next, [d.addon]: brand.addons.find((x) => x.id === d.addon).options?.[0]?.id || null };
+    } else if (d.aopt) { const [id, opt] = d.aopt.split(':'); u.addons = { ...u.addons, [id]: opt }; }
+    renderUpload();
   };
   document.getElementById('file').onchange = (e) => addFiles([...e.target.files]);
   document.getElementById('cam').onchange = (e) => addFiles([...e.target.files]);
   document.getElementById('clear')?.addEventListener('click', () => { u.results = []; renderUpload(); });
   document.getElementById('go').onclick = sendSet;
+}
+
+// Two-step menu: pick one service (with its option), then any add-ons.
+function menuHtml(u) {
+  const { services, addons, serviceGroups, menuNote } = state.config.brand;
+  const svc = services.find((s) => s.id === u.serviceId);
+  const priceOf = (x) => (x.options?.every((o) => o.price) ? x.options.map((o) => o.price).join(' / ') : x.price);
+  const seg = (choices, current, attr, prefix = '') => `<div class="seg mini">${choices.map((c) =>
+    `<button type="button" data-${attr}="${prefix}${c.id}" class="${current === c.id ? 'on' : ''}">${esc(c.label)}${c.price ? ` <span class="price">${esc(c.price)}</span>` : ''}</button>`).join('')}</div>`;
+
+  let step1;
+  if (!svc || u.menuOpen) {
+    step1 = serviceGroups.map((g) => `
+      <div class="menu-group">${esc(g)}</div>
+      <div class="menu">${services.filter((s) => s.group === g).map((s) => `
+        <button type="button" class="menu-row ${s.id === u.serviceId ? 'on' : ''}" data-svc="${s.id}">
+          <span class="name">${esc(s.name)}</span><span class="price">${esc(priceOf(s))}</span>
+        </button>`).join('')}
+      </div>`).join('');
+  } else {
+    step1 = `<div class="menu">
+      <div class="menu-row picked"><span class="name">${esc(svc.name)}</span><button type="button" class="link" data-change>Change</button></div>
+      ${svc.options || svc.gel ? `<div class="menu-extra">
+        ${svc.options ? seg(svc.options, u.option, 'opt') : ''}
+        ${svc.gel ? `<button type="button" class="check-row ${u.gel ? 'on' : ''}" data-gel="1"><span class="box"></span><span class="name">Add gel</span><span class="price">+$${svc.gel}</span></button>` : ''}
+      </div>` : ''}
+      ${svc.desc ? `<p class="muted small menu-desc">${esc(svc.desc)} <span class="price">${esc(svc.price)}</span></p>` : ''}
+    </div>`;
+  }
+
+  const step2 = svc && !u.menuOpen ? `
+    <div class="section-label">Add-ons <span class="opt-label">optional</span></div>
+    <div class="menu">${addons.map((a) => {
+      const on = a.id in u.addons;
+      return `<button type="button" class="check-row ${on ? 'on' : ''}" data-addon="${a.id}"><span class="box"></span><span class="name">${esc(a.name)}</span><span class="price">${esc(priceOf(a))}</span></button>
+        ${on && a.options ? `<div class="menu-extra">${seg(a.options, u.addons[a.id], 'aopt', a.id + ':')}</div>` : ''}`;
+    }).join('')}</div>
+    <p class="muted small" style="margin-top:8px">${esc(menuNote)}</p>` : '';
+
+  return `<div id="menu">
+    <div class="section-label">Service</div>
+    ${step1}
+    ${step2}
+  </div>`;
 }
 
 async function addFiles(files) {
@@ -274,12 +332,13 @@ async function sendSet() {
     }
     msg('Saving the set');
     const { post } = await api('/api/sets', { method: 'POST', body: {
-        tech: u.tech, serviceId: u.serviceId,
+        tech: u.tech, serviceId: u.serviceId, option: u.option, gel: u.gel,
+        addons: Object.entries(u.addons).map(([id, option]) => ({ id, option })),
         photos: u.results.map(({ id, name, uploadId, width, height, checks, features, pixelReason, dropped, duplicateOf }) => ({ id, name, uploadId, width, height, checks, features, pixelReason, dropped, duplicateOf })),
     } });
     console.info(`Set processed in ${((Date.now() - started) / 1000).toFixed(1)}s`);
     setPost(post);
-    u.results = []; u.serviceId = null;
+    u.results = []; Object.assign(u, { serviceId: null, option: null, gel: false, addons: {}, menuOpen: true });
     modal(null);
     location.hash = `#/sent/${post.id}`;
   } catch (err) {
@@ -324,8 +383,8 @@ function renderPosts() {
       : `<span class="status needs_approval">Needs approval</span>`;
     return `<a class="card list-item" href="#/post/${p.id}">
       ${hero ? `<img src="${hero.url}" alt="">` : '<img alt="">'}
-      <div class="meta"><div class="title">${esc(s?.name || 'Nail set')}</div>
-        <div class="muted small" style="margin-bottom:4px">by ${esc(p.tech)} · ${[p.heroId, ...p.carouselIds].filter(Boolean).length} photos</div>${status}</div>
+      <div class="meta"><div class="title">${esc(setTitle(p))}</div>
+        <div class="muted small" style="margin-bottom:4px">${setDetail(p) ? esc(setDetail(p)) + ' · ' : ''}by ${esc(p.tech)}</div>${status}</div>
       <span class="chev">${icon('right')}</span></a>`;
   };
 
@@ -398,10 +457,10 @@ function renderPost(id) {
   $app.innerHTML = `
     <a href="#/posts" class="back">${icon('left')}All posts</a>
     <div style="display:flex;justify-content:space-between;align-items:baseline;margin:8px 0 12px">
-      <h1 style="margin:0">${esc(s?.name || 'Nail set')}</h1>
+      <h1 style="margin:0">${esc(setTitle(post))}</h1>
       <span class="status ${isOverdue(post) ? 'overdue' : post.status}">${isOverdue(post) ? 'Overdue' : { needs_approval: 'Needs approval', ready: 'Ready to post', posted: 'Posted' }[post.status]}</span>
     </div>
-    <p class="muted small">by ${esc(post.tech)} · ${post.photos.length} photos uploaded</p>
+    <p class="muted small">${setDetail(post) ? `<span style="color:var(--ink)">${esc(setDetail(post))}</span><br>` : ''}${post.booking ? esc(post.booking.price) + ' · ' : ''}by ${esc(post.tech)} · ${post.photos.length} photos uploaded</p>
 
     ${hero ? `<div class="hero"><img src="${hero.url}" alt="Hero photo" data-view="${hero.url}"><span class="num first">1</span><div class="why"><span class="score">${hero.score}</span>${esc(hero.reason)}</div></div>
       <details><summary>Score breakdown</summary>${checkRows(hero)}</details>` : '<div class="card">No usable photos in this set.</div>'}
@@ -508,8 +567,8 @@ function renderPreparing(post) {
   const failed = post.stage === 'failed';
   $app.innerHTML = `
     <a href="#/posts" class="back">${icon('left')}All posts</a>
-    <h1 style="margin:8px 0">${esc(s?.name || 'Nail set')}</h1>
-    <p class="muted small">by ${esc(post.tech)} · ${post.photos.length} photos uploaded</p>
+    <h1 style="margin:8px 0">${esc(setTitle(post))}</h1>
+    <p class="muted small">${setDetail(post) ? esc(setDetail(post)) + ' · ' : ''}by ${esc(post.tech)} · ${post.photos.length} photos uploaded</p>
     <div class="card" style="text-align:center">
       ${failed
         ? `<h2>This set didn’t finish</h2><p class="muted small">${esc(post.stageError || 'Something went wrong')}</p><button class="btn-primary" data-act="retry">Try again</button>`

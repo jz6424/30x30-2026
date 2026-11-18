@@ -8,6 +8,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { scoreWithFallback, pickVisionProvider } from './lib/vision.js';
 import { draftCaptions } from './lib/captions.js';
+import { resolveBooking, addonAttributes } from './lib/menu.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(ROOT, 'public');
@@ -26,7 +27,6 @@ let db = { posts: [] };
 try { db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')); } catch {}
 const save = () => fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
 const findPost = (id) => db.posts.find((p) => p.id === id);
-const serviceById = (id) => brand.services.find((s) => s.id === id) || null;
 
 // ---------- scheduling: batch in, drip out ----------
 // Assumption: one post a day, 12pm Mon–Thu, 7pm Fri–Sun (studio's evening crowd).
@@ -67,11 +67,12 @@ function retakeTip(photo) {
   }[worst] || null;
 }
 
-async function buildPost({ tech, serviceId, photos }) {
+async function buildPost({ tech, serviceId, option, gel, addons, photos }) {
   const id = crypto.randomUUID().slice(0, 8);
   const dir = path.join(PHOTOS, id);
   fs.mkdirSync(dir, { recursive: true });
-  const service = serviceById(serviceId);
+  const booking = resolveBooking(brand, { serviceId, option, gel, addons });
+  if (!booking) throw Object.assign(new Error('Pick a service from the menu'), { status: 400 });
 
   const stored = photos.slice(0, 30).map((p, i) => {
     const pid = `p${i + 1}`;
@@ -110,6 +111,7 @@ async function buildPost({ tech, serviceId, photos }) {
     createdAt: new Date().toISOString(),
     tech: tech || 'Nail tech',
     serviceId,
+    booking, // service, option, add-ons and price, from lib/brand.json
     status: 'needs_approval',
     stage: 'picking', // picking → captions → null (ready); 'failed' on error
     stageError: null,
@@ -150,7 +152,7 @@ function queue(id) {
 async function processPost(id) {
   let post = findPost(id);
   if (!post) return;
-  const service = serviceById(post.serviceId);
+  const service = post.booking || null;
   const stored = post.photos;
 
   if (post.stage === 'picking' || !post.heroId) {
@@ -186,7 +188,8 @@ async function processPost(id) {
     if (detail) rest = [detail, ...rest.filter((s) => s !== detail)];
     post.heroId = hero?.id || null;
     post.carouselIds = rest.slice(0, 4).map((s) => s.id);
-    post.attributes = vision.attributes;
+    // The tech's add-ons (chrome, French…) are facts; they win over the model's guess.
+    post.attributes = { ...vision.attributes, ...addonAttributes(post.booking) };
     post.visionProvider = vision.provider;
     post.retakeTip = hero && hero.score < 60 ? retakeTip(hero) : null;
     post.stage = 'captions';
@@ -288,7 +291,7 @@ const server = http.createServer(async (req, res) => {
         }
         if (req.method === 'POST' && action === 'captions') {
           const seed = (post.captions.seed || 0) + 1;
-          const out = await draftCaptions({ brand, service: serviceById(post.serviceId), attributes: post.attributes, tweak: body.tweak, current: post.captions.options, seed });
+          const out = await draftCaptions({ brand, service: post.booking || null, attributes: post.attributes, tweak: body.tweak, current: post.captions.options, seed });
           post.captions = { ...out, seed };
           post.edits = {};
           save();

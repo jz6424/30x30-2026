@@ -156,3 +156,27 @@ details summary { cursor: pointer; color: var(--gold-ink); font-weight: 500; fon
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } .spinner { animation-duration: 2.4s; } }
 @media (min-width: 700px) { body { background: var(--paper-2); } main { background: var(--paper); min-height: 100vh; box-shadow: 0 0 0 1px var(--line); } }
+
+/* service menu: a printed-menu list, one service then add-ons */
+.menu { background: var(--card); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+.menu-group { font-size: 13px; color: var(--ink-3); margin: 16px 0 8px; }
+.menu-group:first-of-type { margin-top: 0; }
+.menu-row, .check-row { display: flex; width: 100%; align-items: center; gap: 12px; min-height: 52px; padding: 0 16px; border-radius: 0; background: transparent;
+  font-weight: 400; font-size: 16px; color: var(--ink); text-align: left; border-top: 1px solid var(--line); }
+.menu > :first-child { border-top: 0; }
+.menu-row .name, .check-row .name { flex: 1; min-width: 0; }
+.menu .price, .menu-desc .price { color: var(--ink-2); font-size: 15px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.menu-row:active:not(:disabled), .check-row:active:not(:disabled) { transform: none; background: var(--paper); }
+.menu-row.on { box-shadow: inset 3px 0 0 var(--gold); }
+.menu-row.picked { font-family: var(--serif); font-size: 19px; min-height: 56px; }
+.menu-row.picked .link { font-family: var(--sans); }
+.menu-extra { padding: 0 16px 12px; display: flex; flex-direction: column; gap: 8px; }
+.menu-extra .check-row { border: 1px solid var(--line); border-radius: 10px; min-height: 48px; }
+.check-row .box { width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid rgba(43, 36, 32, .3); flex: none; display: grid; place-items: center; transition: background-color .15s var(--ease), border-color .15s var(--ease); }
+.check-row.on .box { background: var(--ink); border-color: var(--ink); }
+.check-row.on .box::after { content: ""; width: 10px; height: 5px; border: 2px solid var(--paper); border-top: 0; border-right: 0; transform: translateY(-1px) rotate(-45deg); }
+.check-row.on + .menu-extra { margin-top: -4px; }
+.seg.mini button { min-height: 40px; font-size: 14px; gap: 4px; }
+.seg.mini .price { font-size: 13px; color: var(--ink-3); }
+.menu-desc { margin: 0; padding: 0 16px 16px; }
+.opt-label { color: var(--ink-3); font-weight: 400; margin-left: 4px; }

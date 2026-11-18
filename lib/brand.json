@@ -12,18 +12,245 @@
   "houseStyle": "Close-ups of almond nails on marble or white fur, warm cream and gold tones, nails filling the frame.",
   "igVoice": "Casual, playful, emoji-heavy. Almost always mentions DTLA and open 24 hours. Example: \"We'll definitely have you feeling like Nicole Kidman 🤭😝 come see us in DTLA - open 24 hours!\"",
   "fbVoice": "Same message in fuller sentences, fewer emojis.",
-  "hashtags": ["#confessionail", "#nailsalon", "#nailart", "#nailstudio", "#lanailtech", "#24hrnailsalon", "#dtla"],
+  "hashtags": [
+    "#confessionail",
+    "#nailsalon",
+    "#nailart",
+    "#nailstudio",
+    "#lanailtech",
+    "#24hrnailsalon",
+    "#dtla"
+  ],
   "provenHook": "Did you know you can get your nails done at 2am!?",
   "services": [
-    { "id": "confession", "name": "The Confession", "group": "Manicure", "price": "$30", "gelPrice": "$50" },
-    { "id": "spill-the-tea", "name": "Spill The Tea", "group": "Manicure", "price": "$70", "gelPrice": "$90" },
-    { "id": "open-session", "name": "Open Session", "group": "Manicure", "price": "$100", "gelPrice": "$120" },
-    { "id": "custom", "name": "Custom Nails", "group": "Enhancement", "price": "$150+" },
-    { "id": "russian-gel", "name": "Russian Gel", "group": "Enhancement", "price": "$100+" },
-    { "id": "sculpted-gel", "name": "Sculpted Gel", "group": "Enhancement", "price": "$100+" },
-    { "id": "acrylic", "name": "Acrylic", "group": "Enhancement", "price": "$85+" },
-    { "id": "polygel", "name": "Hard Gel / Polygel", "group": "Enhancement", "price": "$80+" },
-    { "id": "gel-x", "name": "Gel X", "group": "Enhancement", "price": "$75+" },
-    { "id": "builder-gel", "name": "Builder Gel / Dip", "group": "Enhancement", "price": "$70+" }
-  ]
+    {
+      "id": "custom",
+      "name": "Custom Nails",
+      "group": "Enhancements",
+      "price": "$150+",
+      "desc": "Custom set with nail art. The artist chooses designs within the appointment time."
+    },
+    {
+      "id": "russian-gel",
+      "name": "Russian Gel",
+      "group": "Enhancements",
+      "price": "$100+",
+      "desc": "Detailed cuticle work with builder gel for a smooth, even finish."
+    },
+    {
+      "id": "polygel",
+      "name": "Hard Gel / Polygel",
+      "group": "Enhancements",
+      "price": "$80+",
+      "options": [
+        {
+          "id": "full",
+          "label": "Full set"
+        },
+        {
+          "id": "fill",
+          "label": "Fill"
+        }
+      ],
+      "desc": "Added strength for longer natural nails without extensions."
+    },
+    {
+      "id": "builder-gel",
+      "name": "Builder Gel / Dip",
+      "group": "Enhancements",
+      "price": "$70+",
+      "options": [
+        {
+          "id": "full",
+          "label": "Full set"
+        },
+        {
+          "id": "fill",
+          "label": "Fill"
+        }
+      ],
+      "desc": "Added strength for natural nails, with fills instead of full removal. Lasts 2–4 weeks."
+    },
+    {
+      "id": "sculpted-gel",
+      "name": "Sculpted Gel / Dual Form",
+      "group": "Enhancements",
+      "price": "$100+",
+      "desc": "Adds length without tips for a natural-looking finish."
+    },
+    {
+      "id": "acrylic",
+      "name": "Acrylic",
+      "group": "Enhancements",
+      "price": "$85+",
+      "options": [
+        {
+          "id": "full",
+          "label": "Full set"
+        },
+        {
+          "id": "fill",
+          "label": "Fill"
+        }
+      ],
+      "desc": "Traditional acrylic for a durable, shape-holding finish."
+    },
+    {
+      "id": "gel-x",
+      "name": "Gel X",
+      "group": "Enhancements",
+      "price": "$75+",
+      "desc": "Full set extensions for length, 2–4 weeks of wear."
+    },
+    {
+      "id": "rubber-base",
+      "name": "Rubber / Fiber Base",
+      "group": "Enhancements",
+      "price": "$65+",
+      "desc": "Support for thin natural nails that need more strength than gel polish."
+    },
+    {
+      "id": "regular-polish",
+      "name": "Regular Polish",
+      "group": "Polish & care",
+      "price": "$20",
+      "options": [
+        {
+          "id": "hands",
+          "label": "Hands",
+          "price": "$20"
+        },
+        {
+          "id": "toes",
+          "label": "Toes",
+          "price": "$25"
+        }
+      ],
+      "gel": 20
+    },
+    {
+      "id": "cut-file",
+      "name": "Cut & File Only",
+      "group": "Polish & care",
+      "price": "$15",
+      "options": [
+        {
+          "id": "hands",
+          "label": "Hands",
+          "price": "$15"
+        },
+        {
+          "id": "toes",
+          "label": "Toes",
+          "price": "$20"
+        }
+      ],
+      "gel": 20
+    }
+  ],
+  "serviceGroups": [
+    "Enhancements",
+    "Polish & care"
+  ],
+  "addons": [
+    {
+      "id": "shiny-buff",
+      "name": "Shiny Buff",
+      "price": "$10"
+    },
+    {
+      "id": "french",
+      "name": "French",
+      "price": "$20",
+      "options": [
+        {
+          "id": "regular",
+          "label": "Regular",
+          "price": "$20"
+        },
+        {
+          "id": "deep",
+          "label": "Deep",
+          "price": "$30"
+        }
+      ]
+    },
+    {
+      "id": "chrome",
+      "name": "Chrome / Cat Eye",
+      "price": "$20+",
+      "options": [
+        {
+          "id": "chrome",
+          "label": "Chrome"
+        },
+        {
+          "id": "cat-eye",
+          "label": "Cat eye"
+        }
+      ]
+    },
+    {
+      "id": "finish",
+      "name": "Matte / Glitter / Jelly",
+      "price": "$5+",
+      "options": [
+        {
+          "id": "matte",
+          "label": "Matte"
+        },
+        {
+          "id": "glitter",
+          "label": "Glitter"
+        },
+        {
+          "id": "jelly",
+          "label": "Jelly"
+        }
+      ]
+    },
+    {
+      "id": "nail-art",
+      "name": "Nail Art, per nail",
+      "price": "$3–$20+"
+    },
+    {
+      "id": "repair",
+      "name": "Nail Repair",
+      "price": "$10+"
+    },
+    {
+      "id": "gel-removal",
+      "name": "Gel Removal",
+      "price": "$5",
+      "options": [
+        {
+          "id": "with",
+          "label": "With service",
+          "price": "$5"
+        },
+        {
+          "id": "without",
+          "label": "Without service",
+          "price": "$10"
+        }
+      ]
+    },
+    {
+      "id": "custom-removal",
+      "name": "Custom Removal",
+      "price": "$10–$20+",
+      "options": [
+        {
+          "id": "with",
+          "label": "With service"
+        },
+        {
+          "id": "without",
+          "label": "Without service"
+        }
+      ]
+    }
+  ],
+  "menuNote": "Pricing varies with removal, length, shape and design. Confirm the price with the client before service."
 }
