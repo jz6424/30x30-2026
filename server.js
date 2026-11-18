@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { scoreWithFallback, pickVisionProvider } from './lib/vision.js';
 import { draftCaptions } from './lib/captions.js';
 import { resolveBooking, addonAttributes } from './lib/menu.js';
+import { createAuth } from './lib/auth.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(ROOT, 'public');
@@ -21,6 +22,8 @@ const brand = JSON.parse(fs.readFileSync(path.join(ROOT, 'lib/brand.json'), 'utf
 // Set BOOKING_URL (e.g. in Render) to the studio's real booking page.
 if (process.env.BOOKING_URL) brand.bookingUrl = process.env.BOOKING_URL;
 const techById = (id) => brand.techs.find((t) => t.id === id) || null;
+const auth = createAuth(brand);
+const isPublic = (post) => (post.status === 'ready' || post.status === 'posted') && !post.stage;
 
 fs.mkdirSync(PHOTOS, { recursive: true });
 fs.mkdirSync(UPLOADS, { recursive: true });
@@ -217,7 +220,7 @@ async function processPost(id) {
 // ---------- public site data: only approved sets, no captions or drafts ----------
 function publicData() {
   const gallery = db.posts
-    .filter((p) => (p.status === 'ready' || p.status === 'posted') && p.heroId && !p.stage)
+    .filter((p) => isPublic(p) && p.heroId)
     .sort((a, b) => new Date(b.approvedAt || b.createdAt) - new Date(a.approvedAt || a.createdAt))
     .map((p) => ({
       id: p.id,
@@ -241,8 +244,8 @@ function publicData() {
 // ---------- HTTP ----------
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg' };
 
-function send(res, status, body) {
-  res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+function send(res, status, body, headers = {}) {
+  res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
   res.end(JSON.stringify(body));
 }
 function readRaw(req, limit) {
@@ -276,14 +279,35 @@ const server = http.createServer(async (req, res) => {
   const parts = url.pathname.split('/').filter(Boolean);
   try {
     if (parts[0] === 'api') {
+      // Requests that change things must come from this site.
+      if (req.method !== 'GET' && req.headers.origin && new URL(req.headers.origin).host !== req.headers.host) {
+        return send(res, 403, { error: 'Cross-site request blocked' });
+      }
+
+      // ----- open to everyone -----
+      if (req.method === 'GET' && url.pathname === '/api/public') return send(res, 200, publicData());
+      if (req.method === 'GET' && url.pathname === '/api/staff') return send(res, 200, { staff: auth.staff });
+      if (req.method === 'POST' && url.pathname === '/api/login') {
+        const r = auth.login(req, await readBody(req, 10_000));
+        if (r.status !== 200) return send(res, r.status, { error: r.error }, r.retryAfter ? { 'Retry-After': String(r.retryAfter) } : {});
+        return send(res, 200, { user: r.user }, { 'Set-Cookie': r.cookie });
+      }
+      if (req.method === 'POST' && url.pathname === '/api/logout') return send(res, 200, { ok: true }, { 'Set-Cookie': auth.clearCookie() });
+
+      // ----- staff only -----
+      const user = auth.userFrom(req);
+      if (!user) return send(res, 401, { error: 'Please sign in', signIn: true });
+      const owner = user.role === 'owner';
+      if (req.method === 'GET' && url.pathname === '/api/me') return send(res, 200, { user });
+
       if (req.method === 'GET' && url.pathname === '/api/config') {
         const vp = await pickVisionProvider();
         let phoneUrl = null;
         try { phoneUrl = fs.readFileSync(path.join(DATA, 'phone-url.txt'), 'utf8').trim(); } catch {}
         return send(res, 200, { brand, visionProvider: vp.label, live: vp.name === 'claude', phoneUrl });
       }
-      if (req.method === 'GET' && url.pathname === '/api/posts') return send(res, 200, { posts: db.posts });
-      if (req.method === 'GET' && url.pathname === '/api/public') return send(res, 200, publicData());
+      // Techs only see their own sets; the owner sees everything.
+      if (req.method === 'GET' && url.pathname === '/api/posts') return send(res, 200, { posts: owner ? db.posts : db.posts.filter((p) => p.techId === user.id) });
       if (req.method === 'POST' && url.pathname === '/api/uploads') {
         const buf = await readRaw(req, 20 * 1024 * 1024);
         if (buf.length < 100 || buf[0] !== 0xff || buf[1] !== 0xd8) return send(res, 400, { error: 'That file isn’t a JPEG photo' });
@@ -294,8 +318,13 @@ const server = http.createServer(async (req, res) => {
       if (req.method === 'POST' && url.pathname === '/api/sets') {
         const body = await readBody(req);
         if (!Array.isArray(body.photos) || !body.photos.length) return send(res, 400, { error: 'Add at least one photo.' });
+        // A tech's upload is always theirs; the owner can upload for any tech.
+        if (!owner) { body.techId = user.id; delete body.tech; }
         return send(res, 200, { post: await buildPost(body) });
       }
+
+      // ----- owner only: review, approve, share, edit, delete -----
+      if (!owner) return send(res, 403, { error: 'Only the owner can do that' });
       if (req.method === 'POST' && url.pathname === '/api/posts/approve-all') {
         const now = new Date().toISOString();
         for (const p of db.posts.filter((p) => p.status === 'needs_approval' && p.heroId && !p.stage)) {
@@ -361,7 +390,16 @@ const server = http.createServer(async (req, res) => {
       }
       return send(res, 404, { error: 'Unknown API route' });
     }
-    if (parts[0] === 'photos') return serveFile(res, PHOTOS, parts.slice(1).join('/'));
+    if (parts[0] === 'photos') {
+      // Photos of approved sets are public; others need a staff sign-in.
+      const post = findPost(parts[1]);
+      if (!post) return send(res, 404, { error: 'Not found' });
+      if (!isPublic(post)) {
+        const user = auth.userFrom(req);
+        if (!user || (user.role !== 'owner' && post.techId !== user.id)) return send(res, 404, { error: 'Not found' });
+      }
+      return serveFile(res, PHOTOS, parts.slice(1).join('/'));
+    }
     // Staff app (techs upload, Tina approves) lives at /studio.
     if (parts[0] === 'studio') return serveFile(res, PUBLIC, 'studio.html');
     // Everything without a file extension is a page of the public site.

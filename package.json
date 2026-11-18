@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "phone": "node scripts/phone.js"
+    "phone": "node scripts/phone.js",
+    "hash-pin": "node scripts/hash-pin.js"
   },
   "engines": {
     "node": ">=18"

@@ -180,3 +180,18 @@ details summary { cursor: pointer; color: var(--gold-ink); font-weight: 500; fon
 .seg.mini .price { font-size: 13px; color: var(--ink-3); }
 .menu-desc { margin: 0; padding: 0 16px 16px; }
 .opt-label { color: var(--ink-3); font-weight: 400; margin-left: 4px; }
+
+/* sign in */
+.top-right { display: flex; align-items: center; gap: 8px; }
+.icon-btn { min-height: 40px; width: 40px; padding: 0; border-radius: 10px; background: transparent; color: var(--ink-2); }
+.icon-btn:hover { background: var(--paper-2); color: var(--ink); }
+.link-plain { background: none; min-height: 0; padding: 4px 0; font-weight: 400; color: var(--ink-2); }
+.pin-dots { display: flex; gap: 16px; justify-content: center; margin: 32px 0 8px; }
+.pin-dots i { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--ink-3); transition: background-color .1s var(--ease), border-color .1s var(--ease); }
+.pin-dots i.on { background: var(--ink); border-color: var(--ink); }
+.pin-error { min-height: 20px; text-align: center; color: var(--bad); font-size: 14px; margin: 0 0 16px; }
+.pinpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; max-width: 320px; margin: 0 auto; }
+.pinpad button { min-height: 64px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); font-family: var(--serif); font-size: 26px; font-weight: 400; color: var(--ink); font-variant-numeric: tabular-nums lining-nums; }
+.pinpad button:hover { background: var(--paper-2); }
+.pinpad button.ok { background: var(--ink); color: var(--paper); font-family: var(--sans); font-size: 17px; font-weight: 600; border-color: var(--ink); }
+.pinpad .ico { width: 22px; height: 22px; }

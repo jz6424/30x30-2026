@@ -15,7 +15,30 @@ Built for Converge.AI at Stanford, Nov 20 2026.
 
 A set appears on the public pages the moment Tina approves it in `/studio` (the public pages refresh every 4 seconds). Only approved sets and their photos are public; captions, drafts and skipped photos are not.
 
-The team and locations live in `lib/brand.json` (`techs`, `locations`). **The three techs (Mia, Jasmine, Kim) are samples** with made-up bios: replace them with the real team. Set `BOOKING_URL` (for example in Render's environment settings) to the studio's booking page; until then the Book buttons say online booking is coming soon. The staff side has no login yet, so anyone with the `/studio` link can use it.
+The team and locations live in `lib/brand.json` (`techs`, `locations`). **The three techs (Mia, Jasmine, Kim) are samples** with made-up bios: replace them with the real team. Set `BOOKING_URL` (for example in Render's environment settings) to the studio's booking page; until then the Book buttons say online booking is coming soon.
+
+## Staff sign-in (PINs)
+
+`/studio` asks each person to tap their name and enter a 4 to 6 digit PIN. The public pages stay open.
+
+| Who | Can do | Demo PIN |
+|---|---|---|
+| Tina (owner) | Everything: review, approve, share, edit, delete, upload for any tech | 2468 |
+| Mia, Jasmine, Kim (techs) | Upload sets only. Each set is credited to whoever is signed in | 1111, 2222, 3333 |
+
+**The demo PINs are for testing only.** To set real ones on Render:
+
+1. Run `npm run hash-pin -- 482913` (your chosen PIN). It prints a hash like `scrypt$...$...`.
+2. In Render, open the service's Environment tab and set `PIN_HASH_TINA` to that hash. Do the same for `PIN_HASH_MIA`, `PIN_HASH_JASMINE` and `PIN_HASH_KIM` (the name is `PIN_HASH_` plus the tech's id from `lib/brand.json`, in capitals).
+3. Save. Render redeploys, and the demo PIN for that person stops working.
+
+How it works:
+
+- PINs are stored only as scrypt hashes, never in the code.
+- Signing in sets an HTTP-only, SameSite=Lax cookie with the person's id and role, signed with `SESSION_SECRET` (Render generates one from `render.yaml`). It lasts 14 days. Without `SESSION_SECRET` everyone is signed out when the server restarts.
+- After 5 wrong PINs for one name (or 20 overall) from the same device, sign-in is locked for 15 minutes.
+- Roles are checked on the server for every `/api` route, so a tech can't approve by calling the API directly. A tech only sees their own sets, and photos of unapproved sets are only served to Tina and the tech who uploaded them.
+- The sign-out button is at the top right.
 
 ## Host it (fixed link for phones)
 
@@ -85,6 +108,8 @@ The vision step is pluggable (`lib/vision.js`). Providers: `claude` (used when `
 - `lib/captions.js`: caption drafting with Claude, or templates in the studio voice.
 - `public/`: the app (no framework, no build step), manifest, icons and service worker for Add to Home Screen.
 - `scripts/phone.js`: `npm run phone`, the app plus an HTTPS tunnel and QR code.
+- `lib/auth.js`: PIN sign-in, signed session cookie, rate limit.
+- `scripts/hash-pin.js`: `npm run hash-pin -- <pin>` prints the value for a `PIN_HASH_<ID>` env var.
 
 ## Assumptions
 

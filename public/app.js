@@ -19,6 +19,8 @@ const ICONS = {
   x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
   left: '<path d="m15 18-6-6 6-6"/>',
   right: '<path d="m9 18 6-6-6-6"/>',
+  logout: '<path d="m16 17 5-5-5-5"/><path d="M21 12H9"/><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>',
+  back: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5 5.5 5.5 0 0 1-5.5 5.5H11"/>',
 };
 const icon = (name) => `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
 
@@ -30,9 +32,11 @@ async function api(path, opts = {}) {
   const res = await fetch(path, { headers: { 'Content-Type': 'application/json', ...TUNNEL_HEADERS }, ...opts, body: opts.body ? JSON.stringify(opts.body) : undefined });
   let json = null;
   try { json = await res.json(); } catch {}
+  if (res.status === 401 && json?.signIn) { showSignIn(); throw new Error('Please sign in'); }
   if (!res.ok || !json) throw new Error(json?.error || `Server error ${res.status}. Try again`);
   return json;
 }
+const isOwner = () => state.user?.role === 'owner';
 let toastTimer;
 function toast(msg, ms = 3200) {
   const t = document.getElementById('toast');
@@ -184,8 +188,8 @@ function renderUpload() {
     <h1>New set</h1>
     <p class="muted">Add photos of one finished set. The app picks the best shots and drafts a caption, and Tina approves before anything is posted.</p>
 
-    <div class="section-label">Who did this set?</div>
-    <div class="chips" id="techs">${state.config.brand.techs.map((t) => `<button type="button" class="chip ${u.techId === t.id ? 'on' : ''}" data-tech="${t.id}">${esc(t.name)}</button>`).join('')}</div>
+    ${isOwner() ? `<div class="section-label">Who did this set?</div>
+    <div class="chips" id="techs">${state.config.brand.techs.map((t) => `<button type="button" class="chip ${u.techId === t.id ? 'on' : ''}" data-tech="${t.id}">${esc(t.name)}</button>`).join('')}</div>` : ''}
 
     ${menuHtml(u)}
 
@@ -206,7 +210,7 @@ function renderUpload() {
       <button class="btn-primary" id="go" ${!validTech(u) || !u.serviceId || !kept.length || u.analyzing || u.sending ? 'disabled' : ''}>Pick the best shots</button>
     </div></div>`;
 
-  document.getElementById('techs').onclick = (e) => {
+  if (isOwner()) document.getElementById('techs').onclick = (e) => {
     const t = e.target.closest('[data-tech]'); if (!t) return;
     u.techId = t.dataset.tech; localStorage.setItem('techId', u.techId); renderUpload();
   };
@@ -234,7 +238,7 @@ function renderUpload() {
   document.getElementById('go').onclick = sendSet;
 }
 
-const validTech = (u) => state.config.brand.techs.some((t) => t.id === u.techId);
+const validTech = (u) => !isOwner() || state.config.brand.techs.some((t) => t.id === u.techId);
 
 // Two-step menu: pick one service (with its option), then any add-ons.
 function menuHtml(u) {
@@ -363,7 +367,7 @@ function renderSent(id) {
     <p class="muted">${post.photos.length} photos saved, ${usable.length} good to use. The app picks the best shots and writes the caption on its own, so you can close this screen</p>
     <div class="grid">${usable.map((p) => `<div class="tile"><img src="${p.url}" alt=""></div>`).join('')}</div>
     <div class="bar"><div class="inner row">
-      <a class="btn btn-ghost" href="#/post/${post.id}">Open Tina’s view</a>
+      ${isOwner() ? `<a class="btn btn-ghost" href="#/post/${post.id}">Open review</a>` : ''}
       <a class="btn btn-primary" href="#/upload">Upload another set</a>
     </div></div>`;
 }
@@ -619,6 +623,117 @@ function nextSlotLabel() {
   return 'the next open day';
 }
 
+// ---------- sign in (PIN) ----------
+async function startApp() {
+  state.config = await api('/api/config');
+  state.posts = (await api('/api/posts')).posts;
+  document.querySelector('[data-tab="posts"]').hidden = !isOwner();
+  document.getElementById('who').textContent = state.user.name;
+  document.getElementById('signout').hidden = false;
+  document.querySelector('.tabs').hidden = !isOwner();
+  if (!isOwner()) state.upload.techId = state.user.id;
+  updateBadge();
+  setupHint();
+  render();
+}
+
+let signInShown = false;
+async function showSignIn() {
+  if (signInShown) return;
+  signInShown = true;
+  state.user = null;
+  document.querySelector('.tabs').hidden = true;
+  document.getElementById('signout').hidden = true;
+  document.getElementById('who').textContent = 'Studio';
+  const bar = document.querySelector('.bar'); if (bar) bar.remove();
+  document.body.style.paddingBottom = '24px';
+  const { staff } = await fetch('/api/staff', { headers: TUNNEL_HEADERS }).then((r) => r.json());
+  let who = staff.find((s) => s.id === localStorage.getItem('lastStaff')) || null;
+  let pin = '';
+  let busy = false;
+  let error = '';
+
+  const draw = () => {
+    if (!who) {
+      $app.innerHTML = `
+        <h1>Sign in</h1>
+        <p class="muted">Tap your name, then enter your PIN</p>
+        <div class="menu" id="staff">${staff.map((s) => `<button type="button" class="menu-row" data-who="${s.id}"><span class="name">${esc(s.name)}</span><span class="price">${s.role === 'owner' ? 'Owner' : 'Nail tech'}</span></button>`).join('')}</div>
+        <p class="muted small" style="margin-top:16px"><a href="/" style="color:var(--gold-ink)">Go to the public site</a></p>`;
+      return;
+    }
+    $app.innerHTML = `
+      <button type="button" class="back link-plain" data-who-change>${icon('left')}Not ${esc(who.name)}?</button>
+      <h1 style="margin-top:8px">Hi, ${esc(who.name)}</h1>
+      <p class="muted">Enter your PIN</p>
+      <div class="pin-dots" aria-live="polite">${Array.from({ length: Math.max(4, pin.length) }, (_, i) => `<i class="${i < pin.length ? 'on' : ''}"></i>`).join('')}</div>
+      <p class="pin-error" role="alert">${esc(error)}</p>
+      <div class="pinpad">
+        ${['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((k) => `<button type="button" data-key="${k}">${k}</button>`).join('')}
+        <button type="button" data-key="del" aria-label="Delete">${icon('back')}</button>
+        <button type="button" data-key="0">0</button>
+        <button type="button" data-key="ok" class="ok" ${pin.length < 4 || busy ? 'disabled' : ''}>${busy ? '…' : 'Go'}</button>
+      </div>`;
+  };
+
+  async function submit() {
+    if (pin.length < 4 || busy) return;
+    busy = true; error = ''; draw();
+    try {
+      const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json', ...TUNNEL_HEADERS }, body: JSON.stringify({ id: who.id, pin }) });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'Sign-in failed');
+      localStorage.setItem('lastStaff', who.id);
+      state.user = json.user;
+      signInShown = false;
+      document.removeEventListener('keydown', onKey);
+      $app.onclick = null;
+      location.hash = isOwner() ? '#/posts' : '#/upload';
+      await startApp();
+    } catch (err) {
+      error = err.message; pin = ''; busy = false; draw();
+    }
+  }
+  function press(k) {
+    if (busy) return;
+    if (k === 'del') pin = pin.slice(0, -1);
+    else if (k === 'ok') return submit();
+    else if (pin.length < 6) pin += k;
+    error = ''; draw();
+  }
+  function onKey(e) {
+    if (!who) return;
+    if (/^\d$/.test(e.key)) press(e.key);
+    else if (e.key === 'Backspace') press('del');
+    else if (e.key === 'Enter') press('ok');
+  }
+  document.addEventListener('keydown', onKey);
+  $app.onclick = (e) => {
+    const w = e.target.closest('[data-who]');
+    if (w) { who = staff.find((s) => s.id === w.dataset.who); pin = ''; error = ''; return draw(); }
+    if (e.target.closest('[data-who-change]')) { who = null; pin = ''; error = ''; return draw(); }
+    const k = e.target.closest('[data-key]');
+    if (k) press(k.dataset.key);
+  };
+  draw();
+}
+
+async function signOut() {
+  await fetch('/api/logout', { method: 'POST', headers: TUNNEL_HEADERS }).catch(() => {});
+  state.user = null; state.config = null; state.posts = []; state.filesCache = {};
+  Object.assign(state.upload, { results: [], serviceId: null, option: null, gel: false, addons: {}, menuOpen: true });
+  location.hash = '';
+  showSignIn();
+}
+document.getElementById('signout').onclick = () => {
+  const m = modal(`<h2>Sign out?</h2><p class="muted">Photos you haven’t sent yet will be cleared</p><div class="row"><button class="btn-ghost" data-a="no">Stay</button><button class="btn-primary" data-a="yes">Sign out</button></div>`);
+  m.onclick = (e) => {
+    const x = e.target.closest('[data-a]')?.dataset.a; if (!x) return;
+    modal(null);
+    if (x === 'yes') signOut();
+  };
+};
+
 // ---------- router ----------
 function render() {
   const h = location.hash || '#/upload';
@@ -627,6 +742,8 @@ function render() {
   $app.onclick = null;
   if (route !== 'post') state.view.editing = false;
   window.scrollTo(0, 0);
+  if (!state.user || !state.config) return;
+  if (!isOwner() && (route === 'posts' || route === 'post')) { location.hash = '#/upload'; return; }
   if (route === 'posts') renderPosts();
   else if (route === 'post') renderPost(id);
   else if (route === 'sent') renderSent(id);
@@ -674,11 +791,10 @@ function setupHint() {
 // ---------- boot ----------
 (async function boot() {
   if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('/sw.js').catch(() => {});
-  state.config = await api('/api/config');
-  state.posts = (await api('/api/posts')).posts;
-  updateBadge();
-  setupHint();
-  render();
+  try {
+    state.user = (await api('/api/me')).user;
+  } catch { return; } // showSignIn() already ran
+  await startApp();
   // Keep the owner view fresh when sets arrive from the team.
   // Refresh while Tina is looking: new sets arrive, and sets finish getting ready.
   const sig = (list) => JSON.stringify(list.map((p) => [p.id, p.status, p.stage]));
@@ -687,7 +803,7 @@ function setupHint() {
     const onPosts = location.hash.startsWith('#/posts');
     const openId = location.hash.startsWith('#/post/') ? location.hash.split('/')[2] : null;
     const open = openId && state.posts.find((p) => p.id === openId);
-    if (busy || document.visibilityState !== 'visible' || !(onPosts || open?.stage)) return;
+    if (busy || !isOwner() || document.visibilityState !== 'visible' || !(onPosts || open?.stage)) return;
     busy = true;
     try {
       const { posts } = await api('/api/posts');

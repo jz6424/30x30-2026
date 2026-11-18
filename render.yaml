@@ -6,9 +6,23 @@ services:
     plan: free
     buildCommand: npm install --no-audit --no-fund
     startCommand: node server.js
-    healthCheckPath: /api/config
+    healthCheckPath: /api/staff
     envVars:
       - key: NODE_VERSION
         value: "22"
       - key: ANTHROPIC_API_KEY
         sync: false # optional: paste a key in Render for Claude scoring and captions
+      - key: SESSION_SECRET
+        generateValue: true # signs staff sign-in cookies
+      - key: BOOKING_URL
+        sync: false # the studio's booking page, for the public Book buttons
+      # Staff PINs: set PIN_HASH_TINA, PIN_HASH_MIA, PIN_HASH_JASMINE, PIN_HASH_KIM
+      # to the output of `npm run hash-pin -- <pin>`. Unset = demo PINs (see README).
+      - key: PIN_HASH_TINA
+        sync: false
+      - key: PIN_HASH_MIA
+        sync: false
+      - key: PIN_HASH_JASMINE
+        sync: false
+      - key: PIN_HASH_KIM
+        sync: false
