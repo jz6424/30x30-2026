@@ -10,6 +10,8 @@ let lastSig = '';
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const techOf = (id) => data.techs.find((t) => t.id === id);
 const locOf = (id) => data.locations.find((l) => l.id === id);
+const openLocs = () => data.locations.filter((l) => l.status === 'open');
+const techLocs = (t) => (t.locationIds?.length ? t.locationIds.map(locOf).filter((l) => l && l.status === 'open') : openLocs());
 const directions = (l) => `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(l.address)}`;
 const bookingReady = () => data.brand.bookingUrl && !data.brand.bookingUrl.includes('{{');
 
@@ -52,7 +54,8 @@ function placeCard(l, { withGallery = false } = {}) {
     <span class="open">${esc(l.hours)}</span>
     <h3>${esc(l.name)}</h3>
     <p class="muted">${esc(l.address)}<br>${esc(l.hoursDetail)}${l.phone ? `<br><a href="tel:${l.phone.replace(/\D/g, '')}">${esc(l.phone)}</a>` : ''}</p>
-    <div class="row"><a class="btn" ${bookAttrs()}>Book</a><a class="btn btn-line" href="${directions(l)}" target="_blank" rel="noopener">Directions</a></div>
+    <div class="row"><a class="btn" href="/request?at=${l.id}" data-link>Request an artist</a><a class="btn btn-line" href="${directions(l)}" target="_blank" rel="noopener">Directions</a></div>
+    <p class="small muted">${esc(data.techs.filter((t) => techLocs(t).some((x) => x.id === l.id)).map((t) => t.name).join(', ') || 'Artists coming soon')}</p>
     ${withGallery ? (sets.length ? `<div class="strip">${sets.map((s) => workCard(s, { small: true })).join('')}</div>` : '<p class="muted small">New work from this studio shows up here</p>') : ''}
   </div>`;
 }
@@ -66,7 +69,7 @@ function home() {
       <div style="display:grid;gap:20px">
         <span class="open">Open now · 24 hours</span>
         <h1>${esc(tagline)}</h1>
-        <p class="lede">A nail studio in the Historic Core of Downtown LA. Walk in 9am to 8pm, or book any hour after that.</p>
+        <p class="lede">${openLocs().length > 1 ? `${openLocs().length} nail studios in Los Angeles` : "A nail studio in the Historic Core of Downtown LA"}. Walk in 9am to 8pm, or book any hour after that.</p>
         <div class="actions"><a class="btn" ${bookAttrs()}>Book an appointment</a><a class="btn btn-line" href="/request" data-link>Request an artist</a></div>
         <a class="oncall-line" href="/request" data-link><span class="${onCallCount() ? 'open' : 'soon'}">${onCallLine()}</span>${onCallCount() ? '<span>Get nails now, at the studio or at your place</span>' : '<span>Request a time and we’ll find you an artist</span>'}</a>
       </div>
@@ -93,7 +96,7 @@ function techPage(id) {
   return `
     <a class="back" href="/#artists" data-link>‹ All artists</a>
     <div class="profile">
-      <div class="top"><div class="mono big">${esc(t.name[0])}</div><div><h1>${esc(t.name)}</h1><p class="muted">Nail artist · ${esc(locOf('dtla')?.name || 'DTLA')}</p>${(data.onCall || []).includes(t.id) ? '<span class="open" style="margin-top:4px">On call now</span>' : ''}</div></div>
+      <div class="top"><div class="mono big">${esc(t.name[0])}</div><div><h1>${esc(t.name)}</h1><p class="muted">Nail artist · ${esc(techLocs(t).map((l) => l.name).join(', ') || 'Confessionail')}</p>${(data.onCall || []).includes(t.id) ? '<span class="open" style="margin-top:4px">On call now</span>' : ''}</div></div>
       <p class="bio">${esc(t.bio)}</p>
       <div class="tags">${t.specialties.map((s) => `<span class="tag">${esc(s)}</span>`).join('')}</div>
       <div class="actions">
@@ -139,18 +142,20 @@ function loadLeaflet() {
 async function drawMap() {
   const el = document.getElementById('map');
   if (!el) return;
-  const open = data.locations.filter((l) => l.lat && l.lng);
+  const open = data.locations.filter((l) => l.status === 'open' && l.lat != null && l.lng != null);
+  if (!open.length) { el.hidden = true; return; }
   try {
     const L = await loadLeaflet();
     if (!document.body.contains(el)) return;
     el.innerHTML = '';
-    const map = L.map(el, { scrollWheelZoom: false, attributionControl: true }).setView([open[0].lat, open[0].lng], 16);
+    const map = L.map(el, { scrollWheelZoom: false, attributionControl: true });
+    if (open.length > 1) map.fitBounds(open.map((l) => [l.lat, l.lng]), { padding: [40, 40], maxZoom: 15 });
+    else map.setView([open[0].lat, open[0].lng], 16);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
     const icon = L.divIcon({ className: '', html: '<div class="pin"></div>', iconSize: [18, 18], iconAnchor: [9, 9] });
     for (const l of open) {
       L.marker([l.lat, l.lng], { icon }).addTo(map)
-        .bindPopup(`<b>Confessionail Studio</b><br>${esc(l.address)}<br>${esc(l.hours)}<br><a href="${directions(l)}" target="_blank" rel="noopener">Directions</a>`)
-        .openPopup();
+        .bindPopup(`<b>${esc(l.name)}</b><br>${esc(l.address)}<br>${esc(l.hours)}<br><a href="${directions(l)}" target="_blank" rel="noopener">Directions</a>`);
     }
   } catch {
     el.innerHTML = `<div class="fallback"><div><b>${esc(open[0]?.address || '')}</b><br><a href="${open[0] ? directions(open[0]) : '#'}" target="_blank" rel="noopener">Open in Maps</a></div></div>`;
@@ -208,17 +213,21 @@ const onCallLine = () => {
   return n ? `${n} artist${n === 1 ? '' : 's'} on call now` : 'No one on call right now';
 };
 
-const form = { serviceId: null, option: null, when: 'now', at: '', where: 'studio', address: '', lat: null, lng: null, pro: null, name: '', phone: '', notes: '', error: '', sending: false };
+const form = { serviceId: null, option: null, when: 'now', at: '', where: null, address: '', lat: null, lng: null, pro: null, name: '', phone: '', notes: '', error: '', sending: false };
 
 function requestPage() {
   const params = new URLSearchParams(location.search);
   if (params.get('pro') && !form.pro) form.pro = params.get('pro');
+  if (params.get('at') && !form.where) form.where = params.get('at');
+  const proT = data.techs.find((t) => t.id === form.pro);
+  if (!form.where || (form.where !== 'house' && !openLocs().some((l) => l.id === form.where))) form.where = (proT ? techLocs(proT)[0] : openLocs()[0])?.id || 'house';
+  const atLoc = form.where !== 'house' ? locOf(form.where) : null;
   const svc = data.services.find((s) => s.id === form.serviceId);
   const opt = svc?.options?.find((o) => o.id === form.option);
   const minutes = opt?.minutes || svc?.minutes;
   const price = opt?.price || svc?.price;
   const groups = [...new Set(data.services.map((s) => s.group))];
-  const canDo = (t) => !form.serviceId || !t.serviceIds || t.serviceIds.includes(form.serviceId);
+  const canDo = (t) => (!form.serviceId || !t.serviceIds || t.serviceIds.includes(form.serviceId)) && (!atLoc || techLocs(t).some((l) => l.id === atLoc.id));
   const active = Object.keys(myRequests());
   const minAt = new Date(Date.now() + 30 * 60_000 - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 
@@ -240,11 +249,11 @@ function requestPage() {
       ${form.when === 'later' ? `<input class="field" type="datetime-local" id="at" min="${minAt}" value="${esc(form.at)}" aria-label="Date and time">` : ''}
 
       <h3>Where</h3>
-      <div class="chiprow" data-group="where"><button type="button" class="pill ${form.where === 'studio' ? 'on' : ''}" data-v="studio">At the studio</button><button type="button" class="pill ${form.where === 'house' ? 'on' : ''}" data-v="house">Come to me</button></div>
-      ${form.where === 'studio' ? `<p class="muted small" style="margin-top:8px">${esc(locOf('dtla')?.address || '')}</p>` : `
+      <div class="chiprow" data-group="where">${openLocs().map((l) => `<button type="button" class="pill ${form.where === l.id ? 'on' : ''}" data-v="${l.id}">${esc(l.name)}</button>`).join('')}<button type="button" class="pill ${form.where === 'house' ? 'on' : ''}" data-v="house">Come to me</button></div>
+      ${atLoc ? `<p class="muted small" style="margin-top:8px">${esc(atLoc.address || '')}${atLoc.hoursDetail ? ` · ${esc(atLoc.hours)}` : ''}</p>` : `
         <input class="field" id="address" placeholder="Home, hotel or office address" autocomplete="street-address" value="${esc(form.address)}">
-        <button type="button" class="btn btn-line btn-small" id="locate" style="margin-top:8px">${form.lat != null ? 'Location added ✓' : 'Use my current location'}</button>
-        <p class="muted small" style="margin-top:8px">Your artist adds a travel fee, usually $15 to $40. They only see your address once they’re booked</p>`}
+        <button type="button" class="btn btn-line btn-small" id="locate" style="margin-top:8px">${form.lat != null ? 'Location added. Tap to update it' : 'Use my current location'}</button>
+        <p class="muted small" style="margin-top:8px">Your artist only sees your address once they’re booked</p>`}
 
       <h3>Artist</h3>
       <div class="chiprow" data-group="pro"><button type="button" class="pill ${!form.pro ? 'on' : ''}" data-v="">Anyone available</button>${data.techs.map((t) => `<button type="button" class="pill ${form.pro === t.id ? 'on' : ''}" data-v="${t.id}" ${canDo(t) ? '' : 'disabled'}>${(data.onCall || []).includes(t.id) ? '<i class="live"></i>' : ''}${esc(t.name)}</button>`).join('')}</div>
@@ -255,7 +264,7 @@ function requestPage() {
       <textarea class="field" id="notes" rows="2" placeholder="Anything we should know? Shape, length, a reference photo you’ll bring">${esc(form.notes)}</textarea>
 
       <div class="summary">
-        ${svc ? `<div><span>${esc(svc.name)}${opt ? `, ${esc(opt.label.toLowerCase())}` : ''}</span><b>${esc(price)}</b></div><div class="muted small"><span>About ${fmtMins(minutes || 60)}${form.where === 'house' ? ' · plus travel fee' : ''}</span></div>` : '<div class="muted">Pick a service to see the price</div>'}
+        ${svc ? `<div><span>${esc(svc.name)}${opt ? `, ${esc(opt.label.toLowerCase())}` : ''}</span><b>${esc(price)}</b></div><div class="muted small"><span>About ${fmtMins(minutes || 60)}</span></div>` : '<div class="muted">Pick a service to see the price</div>'}
       </div>
       <p class="form-error" role="alert">${esc(form.error)}</p>
       <button class="btn" id="send" style="width:100%" ${form.sending ? 'disabled' : ''}>${form.sending ? 'Sending…' : 'Send request'}</button>
@@ -281,6 +290,8 @@ function bindRequestForm() {
     if (pill) {
       const g = pill.closest('[data-group]').dataset.group;
       form[g] = pill.dataset.v || null; form.error = '';
+      if (g === 'where' && form.where !== 'house' && form.pro && !techLocs(data.techs.find((t) => t.id === form.pro) || {}).some((l) => l.id === form.where)) form.pro = null;
+      if (g === 'pro' && form.pro && form.where !== 'house') { const t = data.techs.find((x) => x.id === form.pro); if (!techLocs(t).some((l) => l.id === form.where)) form.where = techLocs(t)[0]?.id || form.where; }
       if (g === 'when' && form.when === 'later' && !form.at) {
         const d = new Date(Date.now() + 2 * 3600_000); d.setMinutes(0, 0, 0);
         form.at = new Date(d - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
@@ -314,7 +325,7 @@ function bindRequestForm() {
         body: JSON.stringify({
           serviceId: form.serviceId, option: form.option,
           when: form.when === 'now' ? 'now' : new Date(form.at).toISOString(),
-          where: form.where === 'house' ? { type: 'house', address: form.address, lat: form.lat, lng: form.lng } : { type: 'studio', locationId: 'dtla' },
+          where: form.where === 'house' ? { type: 'house', address: form.address, lat: form.lat, lng: form.lng } : { type: 'studio', locationId: form.where },
           preferTechId: form.pro, notes: form.notes, client: { name: form.name, phone: form.phone },
         }),
       });
@@ -356,7 +367,7 @@ async function watchRequest(id) {
 }
 function statusHtml(r) {
   const pro = r.pro?.name;
-  const loc = locOf(r.where.locationId || 'dtla');
+  const loc = r.where.type === 'studio' ? locOf(r.where.locationId) || { name: r.where.name, address: r.where.address } : null;
   const head = {
     searching: r.waitingOnStudio
       ? { cls: 'wait', t: 'An artist said yes', s: 'The studio is confirming who takes it. This usually takes a minute or two' }
@@ -368,22 +379,21 @@ function statusHtml(r) {
     cancelled: { cls: 'off', t: 'Request cancelled', s: 'Nothing was charged' },
     expired: { cls: 'off', t: 'No one could take it in time', s: 'Try a later time, or call the studio and we’ll fit you in' },
   }[r.status];
-  const travel = r.where.type === 'house' ? (r.travelFee != null ? ` + $${r.travelFee} travel` : ' + travel fee') : '';
   return `
     <div class="rq-head ${head.cls}">${head.cls === 'wait' ? '<div class="pulse"><i></i></div>' : ''}<h1>${esc(head.t)}</h1><p class="muted">${esc(head.s)}</p></div>
     <div class="place rq-card">
       <div class="facts">
         <div><span>Service</span><b>${esc(r.serviceName)}</b></div>
-        <div><span>Price</span><b>${esc(r.priceLabel)}${travel}</b></div>
+        <div><span>Price</span><b>${esc(r.priceLabel)} <span class="muted small">pay at your appointment</span></b></div>
         <div><span>Takes</span><b>About ${fmtMins(r.minutes)}</b></div>
-        <div><span>When</span><b>${esc(fmtWhen(r.when))}</b></div>
-        <div><span>Where</span><b>${r.where.type === 'house' ? esc(r.where.address) : esc(loc?.address || 'The studio')}</b></div>
+        <div><span>When</span><b>${esc(r.start ? `${fmtWhen(r.start)} to ${new Date(r.end).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : fmtWhen(r.when))}</b></div>
+        <div><span>Where</span><b>${r.where.type === 'house' ? esc(r.where.address) : `${esc(loc?.name || '')}<br><span class="muted small">${esc(loc?.address || '')}</span>`}</b></div>
         ${pro ? `<div><span>Artist</span><b><a href="/tech/${r.pro.id}" data-link>${esc(pro)}</a></b></div>` : ''}
         ${r.notes ? `<div><span>Notes</span><b>${esc(r.notes)}</b></div>` : ''}
       </div>
     </div>
     <div class="rq-actions">
-      ${r.status === 'confirmed' && r.where.type === 'studio' && loc ? `<a class="btn" href="${directions(loc)}" target="_blank" rel="noopener">Directions</a>` : ''}
+      ${r.status === 'confirmed' && r.where.type === 'studio' && loc?.address ? `<a class="btn" href="${directions(loc)}" target="_blank" rel="noopener">Directions</a>` : ''}
       ${['expired', 'cancelled', 'done'].includes(r.status) ? '<a class="btn" href="/request" data-link>New request</a>' : ''}
       ${r.studioPhone ? `<a class="btn btn-line" href="tel:${r.studioPhone.replace(/\D/g, '')}">Call the studio</a>` : ''}
       ${['searching', 'confirmed'].includes(r.status) ? `<button type="button" class="btn btn-line" data-cancel="${r.id}">Cancel request</button>` : ''}

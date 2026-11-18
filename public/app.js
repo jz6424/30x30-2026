@@ -21,6 +21,7 @@ const ICONS = {
   right: '<path d="m9 18 6-6-6-6"/>',
   logout: '<path d="m16 17 5-5-5-5"/><path d="M21 12H9"/><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>',
   back: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5 5.5 5.5 0 0 1-5.5 5.5H11"/>',
+  settings: '<path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>',
 };
 const icon = (name) => `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
 
@@ -189,8 +190,9 @@ function renderUpload() {
     <p class="muted">Add photos of one finished set. The app picks the best shots and drafts a caption, and Tina approves before anything is posted.</p>
 
     ${isOwner() ? `<div class="section-label">Who did this set?</div>
-    <div class="chips" id="techs">${state.config.brand.techs.map((t) => `<button type="button" class="chip ${u.techId === t.id ? 'on' : ''}" data-tech="${t.id}">${esc(t.name)}</button>`).join('')}</div>` : ''}
+    <div class="chips" id="techs">${state.config.brand.techs.filter((t) => t.active !== false).map((t) => `<button type="button" class="chip ${u.techId === t.id ? 'on' : ''}" data-tech="${t.id}">${esc(t.name)}</button>`).join('')}</div>` : ''}
 
+    ${uploadLocHtml(u)}
     ${menuHtml(u)}
 
     <div class="section-label">Photos</div>
@@ -214,6 +216,10 @@ function renderUpload() {
     const t = e.target.closest('[data-tech]'); if (!t) return;
     u.techId = t.dataset.tech; localStorage.setItem('techId', u.techId); renderUpload();
   };
+  document.getElementById('upl-loc')?.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-loc]'); if (!b) return;
+    u.locationId = b.dataset.loc; renderUpload();
+  });
   document.getElementById('menu').onclick = (e) => {
     const t = e.target.closest('[data-svc],[data-opt],[data-gel],[data-change],[data-addon],[data-aopt]');
     if (!t) return;
@@ -238,7 +244,19 @@ function renderUpload() {
   document.getElementById('go').onclick = sendSet;
 }
 
-const validTech = (u) => !isOwner() || state.config.brand.techs.some((t) => t.id === u.techId);
+const validTech = (u) => !isOwner() || state.config.brand.techs.some((t) => t.id === u.techId && t.active !== false);
+// Where the set was done: the artist's studio, or a choice if they work at more than one.
+function uploadLocs(u) {
+  const t = state.config.brand.techs.find((x) => x.id === u.techId);
+  const open = state.config.brand.locations.filter((l) => l.status === 'open');
+  return t?.locationIds?.length ? open.filter((l) => t.locationIds.includes(l.id)) : open;
+}
+function uploadLocHtml(u) {
+  const locs = uploadLocs(u);
+  if (!locs.some((l) => l.id === u.locationId)) u.locationId = locs[0]?.id || null;
+  if (locs.length < 2) return '';
+  return `<div class="section-label">Where was it done?</div><div class="chips" id="upl-loc">${locs.map((l) => `<button type="button" class="chip ${u.locationId === l.id ? 'on' : ''}" data-loc="${l.id}">${esc(l.name)}</button>`).join('')}</div>`;
+}
 
 // Two-step menu: pick one service (with its option), then any add-ons.
 function menuHtml(u) {
@@ -341,7 +359,7 @@ async function sendSet() {
     }
     msg('Saving the set');
     const { post } = await api('/api/sets', { method: 'POST', body: {
-        techId: u.techId, serviceId: u.serviceId, option: u.option, gel: u.gel,
+        techId: u.techId, locationId: u.locationId, serviceId: u.serviceId, option: u.option, gel: u.gel,
         addons: Object.entries(u.addons).map(([id, option]) => ({ id, option })),
         photos: u.results.map(({ id, name, uploadId, width, height, checks, features, pixelReason, dropped, duplicateOf }) => ({ id, name, uploadId, width, height, checks, features, pixelReason, dropped, duplicateOf })),
     } });
@@ -632,6 +650,9 @@ async function startApp() {
   document.getElementById('signout').hidden = false;
   document.querySelector('.tabs').hidden = false;
   document.querySelector('.top').classList.toggle('three', isOwner());
+  document.querySelector('[data-tab="jobs"]').firstChild.textContent = isOwner() ? 'Bookings ' : 'Jobs ';
+  document.getElementById('admin-btn').hidden = !isOwner();
+  state.admin = null;
   state.jobs = null; knownJobs = null;
   loadJobs().catch(() => {});
   if (!isOwner()) state.upload.techId = state.user.id;
@@ -647,6 +668,7 @@ async function showSignIn() {
   state.user = null;
   document.querySelector('.tabs').hidden = true;
   document.getElementById('signout').hidden = true;
+  document.getElementById('admin-btn').hidden = true;
   document.getElementById('who').textContent = 'Studio';
   const bar = document.querySelector('.bar'); if (bar) bar.remove();
   document.body.style.paddingBottom = '24px';
@@ -737,17 +759,27 @@ document.getElementById('signout').onclick = () => {
   };
 };
 
-// ---------- on-demand jobs ----------
-// Techs: go on call, see requests they can take, accept or decline.
-// Tina: sees every request, who is on call, and (if she chose to) gives each job to one pro.
+// ---------- on-demand jobs and bookings ----------
+// Techs: go on call, see requests they can take, accept or decline, see their schedule.
+// Tina: sees the bookings schedule by location, open requests and who is on call.
 state.jobs = null;
+state.view.loc = 'all';
 const fmtMins = (m) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} hr${m % 60 ? ` ${m % 60} min` : ''}`);
-const whenLabel = (j) => (j.when === 'now' ? 'Right now' : fmtSlot(j.when));
+const fmtTime = (iso) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+const dayLabel = (iso) => {
+  const d = new Date(iso), now = new Date();
+  const tmr = new Date(now); tmr.setDate(now.getDate() + 1);
+  if (d.toDateString() === now.toDateString()) return 'Today';
+  if (d.toDateString() === tmr.toDateString()) return 'Tomorrow';
+  return d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+};
+const whenLabel = (j) => (j.start ? `${dayLabel(j.start)}, ${fmtTime(j.start)} to ${fmtTime(j.end)}` : 'Right now');
+const locName = (id) => state.config.brand.locations.find((l) => l.id === id)?.name || '';
 const mapsUrl = (w) => (w.lat != null ? `https://www.google.com/maps/dir/?api=1&destination=${w.lat},${w.lng}` : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(w.address || '')}`);
 function whereLabel(w, full) {
-  if (w.type !== 'house') return 'At the studio';
-  const dist = w.distanceMi != null ? `${w.distanceMi} mi from the studio` : 'distance unknown';
-  return full && w.address ? `House call · ${w.address}` : `House call · ${dist}`;
+  if (w.type !== 'house') return w.name || 'At the studio';
+  if (full && w.address) return `House call · ${w.address}`;
+  return `House call · ${w.distanceMi != null ? `${w.distanceMi} mi away` : 'distance unknown'}`;
 }
 const switchHtml = (id, on, label) => `<button type="button" class="switch ${on ? 'on' : ''}" id="${id}" role="switch" aria-checked="${on}" aria-label="${esc(label)}"><i></i></button>`;
 const choice = (key, val, opts, fmt) => `<div class="chips" data-key="${key}">${opts.map((o) => `<button type="button" class="chip ${o === val ? 'on' : ''}" data-v="${o}">${fmt(o)}</button>`).join('')}</div>`;
@@ -776,18 +808,33 @@ function jobFacts(j, full) {
   </div>`;
 }
 
+// One day-by-day list of bookings: the schedule.
+function scheduleHtml(list, { who } = {}) {
+  if (!list.length) return '<div class="card muted" style="text-align:center">No bookings yet</div>';
+  const sorted = [...list].sort((a, b) => new Date(a.start) - new Date(b.start));
+  const days = [];
+  for (const j of sorted) {
+    const key = new Date(j.start).toDateString();
+    if (!days.length || days[days.length - 1].key !== key) days.push({ key, label: dayLabel(j.start), items: [] });
+    days[days.length - 1].items.push(j);
+  }
+  return days.map((d) => `<div class="day"><div class="day-label">${esc(d.label)}</div><div class="card sched">${d.items.map((j) => `
+    <div class="slot ${j.status === 'done' ? 'past' : ''}">
+      <div class="t"><b>${fmtTime(j.start)}</b><span>${fmtTime(j.end)}</span></div>
+      <div class="d"><div class="n">${esc(j.serviceName)}</div>
+        <div class="muted small">${[who ? esc(j.techName || '') : '', esc(j.where.type === 'house' ? (j.where.address ? 'House call · ' + j.where.address : 'House call') : j.where.name || ''), esc(j.client?.name || '')].filter(Boolean).join(' · ')}</div>
+        ${j.status === 'done' ? '<span class="status posted">Done</span>' : ''}</div>
+    </div>`).join('')}</div></div>`).join('');
+}
+
 function techJobCard(j) {
   const head = `<div class="job-head"><div><div class="title">${esc(j.serviceName)}</div>${j.forYou ? '<span class="status needs_approval">Asked for you</span>' : ''}</div>
-    <div class="pay"><b>$${j.payout}</b><span>you make</span></div></div>`;
-  const split = `<p class="muted small">Client pays ${j.priceLabel}${j.travelFee ? ` + $${j.travelFee} travel` : ''}. ${j.travelFee ? 'The travel fee is all yours' : 'You get your share of the service price'}</p>`;
+    <div class="pay"><b>${esc(fmtMins(j.minutes))}</b><span>${j.start ? fmtTime(j.start) : 'now'}</span></div></div>`;
   if (j.status === 'confirmed') {
     return `<div class="card job mine">${head}${jobFacts(j, true)}
       <div class="row" style="margin-top:12px">${j.where.type === 'house' ? `<a class="btn btn-line" href="${mapsUrl(j.where)}" target="_blank" rel="noopener">Directions</a>` : ''}<button class="btn-primary" data-job="${j.id}" data-act="done">Mark done</button></div></div>`;
   }
-  if (j.status === 'done') {
-    return `<div class="card list-item job-done"><div class="meta"><div class="title">${esc(j.serviceName)}</div><div class="muted small">${esc(j.client.name)} · $${j.payout}</div></div><span class="status posted">Done</span></div>`;
-  }
-  return `<div class="card job">${head}${jobFacts(j, false)}${split}
+  return `<div class="card job">${head}${jobFacts(j, false)}
     ${j.accepted
       ? `<div class="waiting"><span class="status needs_approval">You said yes. Tina is picking who takes it</span><button class="link" data-job="${j.id}" data-act="decline">Withdraw</button></div>`
       : `<div class="row" style="margin-top:12px"><button class="btn-ghost" data-job="${j.id}" data-act="decline">Decline</button><button class="btn-primary" data-job="${j.id}" data-act="accept">Accept</button></div>`}
@@ -798,31 +845,29 @@ function techJobCard(j) {
 function renderTechJobs() {
   const { oncall: oc, open, mine } = state.jobs;
   const booked = mine.filter((j) => j.status === 'confirmed');
-  const done = mine.filter((j) => j.status === 'done');
+  const me = state.config.brand.techs.find((t) => t.id === state.user.id);
   $app.innerHTML = `
     <h1>Jobs</h1>
     <div class="card oncall ${oc.on ? 'is-on' : ''}">
       <div class="oc-row"><div><div class="oc-t">${oc.on ? 'You’re on call' : 'You’re off call'}</div>
-        <div class="muted small">${oc.on ? 'Clients’ requests that fit your settings come here' : 'Turn on to get job requests from clients'}</div></div>
+        <div class="muted small">${oc.on ? `Requests for ${esc((me?.locationIds || []).map(locName).filter(Boolean).join(' and ') || 'your studio')} come here` : 'Turn on to get job requests from clients'}</div></div>
         ${switchHtml('oc-on', oc.on, 'On call')}</div>
       ${oc.on ? `
         <div class="oc-set">
           <div class="lbl">Take jobs for</div>
           <div class="seg" data-key="takes">${[['now', 'Right now'], ['later', 'Later'], ['both', 'Both']].map(([v, l]) => `<button type="button" data-v="${v}" class="${oc.takes === v ? 'on' : ''}">${l}</button>`).join('')}</div>
           <div class="oc-row" style="margin-top:16px"><div><div class="lbl" style="margin:0">House calls</div><div class="muted small">Go to the client’s home, hotel or office</div></div>${switchHtml('oc-house', oc.houseCalls, 'House calls')}</div>
-          ${oc.houseCalls ? `
-            <div class="lbl">How far you’ll go</div>${choice('radiusMi', oc.radiusMi, [3, 5, 10, 15, 25], (v) => `${v} mi`)}
-            <div class="lbl">Travel fee</div>${choice('travelFee', oc.travelFee, [0, 15, 25, 40], (v) => (v ? `$${v}` : 'None'))}
-            <div class="lbl">Smallest job you’ll take</div>${choice('minimum', oc.minimum, [0, 50, 75, 100], (v) => (v ? `$${v}+` : 'Any'))}` : ''}
+          ${oc.houseCalls ? `<div class="lbl">How far you’ll go</div>${choice('radiusMi', oc.radiusMi, [3, 5, 10, 15, 25], (v) => `${v} mi`)}` : ''}
         </div>` : ''}
     </div>
-    ${booked.length ? `<div class="section-label">Booked (${booked.length})</div>${booked.map(techJobCard).join('')}` : ''}
     <div class="section-label">Requests${open.length ? ` (${open.length})` : ''}</div>
     ${open.length ? open.map(techJobCard).join('') : `<div class="card muted" style="text-align:center">${oc.on ? 'No requests right now. New ones show up here, and your phone buzzes' : 'You’re off call, so no requests come to you'}</div>`}
-    ${done.length ? `<div class="section-label">Done</div>${done.map(techJobCard).join('')}` : ''}`;
+    ${booked.length ? `<div class="section-label">Up next</div>${techJobCard(booked.sort((a, b) => new Date(a.start) - new Date(b.start))[0])}` : ''}
+    ${mine.length > 1 || !booked.length ? `<div class="section-label">Your schedule</div>
+    ${scheduleHtml(mine.filter((j) => j !== booked[0]))}` : ''}`;
 
   const saveOc = async (patch) => {
-    try { state.jobs.oncall = (await api('/api/oncall', { method: 'PUT', body: patch })).oncall; await loadJobs(); renderTechJobs(); }
+    try { await api('/api/oncall', { method: 'PUT', body: patch }); await loadJobs(); renderTechJobs(); }
     catch (err) { toast(err.message); }
   };
   $app.onclick = async (e) => {
@@ -853,19 +898,17 @@ function ownerJobCard(r) {
     cancelled: `<span class="status posted">Cancelled by ${r.cancelledBy === 'studio' ? 'you' : 'the client'}</span>`,
     expired: '<span class="status posted">No one took it in time</span>',
   }[r.status] || '';
-  const open = r.status === 'searching' || r.status === 'confirmed';
-  if (!open) {
-    return `<div class="card list-item"><div class="meta"><div class="title">${esc(r.serviceName)}</div><div class="muted small" style="margin-bottom:4px">${esc(r.client.name)} · ${esc(whenLabel(r))} · ${esc(r.where.type === 'house' ? 'House call' : 'Studio')}</div>${statusLine}</div></div>`;
+  if (r.status !== 'searching' && r.status !== 'confirmed') {
+    return `<div class="card list-item"><div class="meta"><div class="title">${esc(r.serviceName)}</div><div class="muted small" style="margin-bottom:4px">${esc(r.client.name)} · ${esc(whereLabel(r.where))}</div>${statusLine}</div></div>`;
   }
   return `<div class="card job">
-    <div class="job-head"><div><div class="title">${esc(r.serviceName)}</div>${statusLine}</div><div class="pay"><b>${esc(r.priceLabel)}</b></div></div>
-    ${jobFacts({ ...r, client: r.client }, true)}
+    <div class="job-head"><div><div class="title">${esc(r.serviceName)}</div>${statusLine}</div><div class="pay"><b>${esc(fmtMins(r.minutes))}</b><span>${r.start ? fmtTime(r.start) : 'now'}</span></div></div>
+    ${jobFacts(r, true)}
     ${r.preferTechName ? `<p class="muted small">Asked for ${esc(r.preferTechName)}</p>` : ''}
     ${r.declined.length ? `<p class="muted small">Declined: ${esc(r.declined.join(', '))}</p>` : ''}
-    ${r.status === 'searching' && r.accepted.length && s.assign === 'owner' ? `<div class="offers">${r.accepted.map((a) => `<div class="offer"><div><b>${esc(a.name)}</b> said yes<div class="muted small">Makes $${a.payout}</div></div><button class="btn-primary" data-job="${r.id}" data-act="assign" data-tech="${a.techId}">Give to ${esc(a.name)}</button></div>`).join('')}</div>` : ''}
-    ${r.status === 'confirmed' ? `<p class="muted small">${esc(r.techName)} makes $${r.payout}</p>` : ''}
+    ${r.status === 'searching' && r.accepted.length && s.assign === 'owner' ? `<div class="offers">${r.accepted.map((a) => `<div class="offer"><div><b>${esc(a.name)}</b> said yes</div><button class="btn-primary" data-job="${r.id}" data-act="assign" data-tech="${a.techId}">Give to ${esc(a.name)}</button></div>`).join('')}</div>` : ''}
     <div class="row" style="margin-top:12px">
-      <button class="btn-ghost" data-job="${r.id}" data-act="cancel">Cancel request</button>
+      <button class="btn-ghost" data-job="${r.id}" data-act="cancel">Cancel</button>
       ${r.status === 'confirmed' ? `<button class="btn-line" data-job="${r.id}" data-act="done">Mark done</button>` : ''}
     </div>
   </div>`;
@@ -873,27 +916,30 @@ function ownerJobCard(r) {
 
 function renderOwnerJobs() {
   const { settings: s, team, requests } = state.jobs;
-  const open = requests.filter((r) => r.status === 'searching');
-  const booked = requests.filter((r) => r.status === 'confirmed');
-  const past = requests.filter((r) => !['searching', 'confirmed'].includes(r.status)).slice(0, 12);
-  const onCall = team.filter((t) => t.on);
+  const locs = state.config.brand.locations.filter((l) => l.status === 'open');
+  const at = state.view.loc;
+  const inLoc = (r) => at === 'all' || (at === 'house' ? r.where.type === 'house' : r.where.locationId === at);
+  const open = requests.filter((r) => r.status === 'searching' && inLoc(r));
+  const sched = requests.filter((r) => (r.status === 'confirmed' || r.status === 'done') && r.start && inLoc(r) && new Date(r.end) > Date.now() - 12 * 3600_000);
+  const past = requests.filter((r) => ['cancelled', 'expired'].includes(r.status) && inLoc(r)).slice(0, 8);
+  const teamHere = team.filter((t) => (at === 'all' ? true : at === 'house' ? t.houseCalls : t.locationIds.includes(at)));
   $app.innerHTML = `
-    <h1>Jobs</h1>
-    <p class="muted" style="margin:-8px 0 16px">Requests clients send from the website, and who on the team is on call</p>
+    <h1>Bookings</h1>
+    <div class="chips loc-filter" data-key="loc" style="margin-bottom:16px">
+      ${[['all', 'All locations'], ...locs.map((l) => [l.id, l.name]), ['house', 'House calls']].map(([v, l]) => `<button type="button" class="chip ${at === v ? 'on' : ''}" data-v="${v}">${esc(l)}</button>`).join('')}
+    </div>
+    ${open.length ? `<div class="section-label" style="margin-top:0">Waiting for an artist (${open.length})</div>${open.map(ownerJobCard).join('')}` : ''}
+    <div class="section-label" ${open.length ? '' : 'style="margin-top:0"'}>Schedule</div>
+    ${scheduleHtml(sched, { who: true })}
+    ${sched.filter((r) => r.status === 'confirmed').length ? `<details class="more"><summary>Manage booked jobs</summary>${sched.filter((r) => r.status === 'confirmed').map(ownerJobCard).join('')}</details>` : ''}
+    <div class="section-label">On call now (${teamHere.filter((t) => t.on).length} of ${teamHere.length})</div>
+    <div class="card team">${teamHere.length ? teamHere.map((t) => `<div class="team-row"><div><b>${esc(t.name)}</b><div class="muted small">${esc(t.locationIds.map(locName).filter(Boolean).join(', '))}</div></div><span class="status ${t.on ? 'ready' : 'posted'}">${t.on ? `On call${t.houseCalls ? ` · house calls ${t.radiusMi} mi` : ''}` : 'Off'}</span></div>`).join('') : '<p class="muted">No one works here yet. Add them in Admin</p>'}</div>
+    <div class="section-label">Who gets a job</div>
     <div class="card">
-      <div class="lbl" style="margin-top:0">Who gets a job</div>
       <div class="seg" data-key="assign"><button type="button" data-v="first" class="${s.assign === 'first' ? 'on' : ''}">First to accept</button><button type="button" data-v="owner" class="${s.assign === 'owner' ? 'on' : ''}">I choose</button></div>
       <p class="muted small" style="margin-top:8px">${s.assign === 'first' ? 'The first artist who says yes is booked right away' : 'Artists say yes, then you pick one. The client waits until you do'}</p>
-      <div class="lbl">Artist’s share of the service price</div>
-      ${choice('payoutPct', s.payoutPct, [50, 60, 70], (v) => `${v}%`)}
-      <p class="muted small" style="margin-top:8px">Travel fees go to the artist in full. No money moves in this demo</p>
     </div>
-    <div class="section-label">On call now (${onCall.length} of ${team.length})</div>
-    <div class="card team">${team.map((t) => `<div class="team-row"><b>${esc(t.name)}</b><span class="status ${t.on ? 'ready' : 'posted'}">${t.on ? `On call${t.houseCalls ? ` · house calls up to ${t.radiusMi} mi` : ''}` : 'Off'}</span></div>`).join('')}</div>
-    <div class="section-label">Open requests${open.length ? ` (${open.length})` : ''}</div>
-    ${open.length ? open.map(ownerJobCard).join('') : '<div class="card muted" style="text-align:center">No open requests. They show up here the moment a client sends one</div>'}
-    ${booked.length ? `<div class="section-label">Booked (${booked.length})</div>${booked.map(ownerJobCard).join('')}` : ''}
-    ${past.length ? `<div class="section-label">Earlier</div>${past.map(ownerJobCard).join('')}` : ''}
+    ${past.length ? `<div class="section-label">Didn’t happen</div>${past.map(ownerJobCard).join('')}` : ''}
     <p class="small" style="text-align:center;margin-top:16px"><a href="/request" target="_blank" style="color:var(--gold-ink)">Open the request page clients use</a></p>`;
 
   const armed = new Set();
@@ -901,7 +947,8 @@ function renderOwnerJobs() {
     const pick = e.target.closest('[data-key] [data-v]');
     if (pick) {
       const key = pick.closest('[data-key]').dataset.key;
-      try { await api('/api/jobs-settings', { method: 'PUT', body: { [key]: key === 'assign' ? pick.dataset.v : Number(pick.dataset.v) } }); await loadJobs(); renderOwnerJobs(); }
+      if (key === 'loc') { state.view.loc = pick.dataset.v; return renderOwnerJobs(); }
+      try { await api('/api/jobs-settings', { method: 'PUT', body: { assign: pick.dataset.v } }); await loadJobs(); renderOwnerJobs(); }
       catch (err) { toast(err.message); }
       return;
     }
@@ -913,7 +960,7 @@ function renderOwnerJobs() {
     try {
       state.jobs = await api(`/api/jobs/${b.dataset.job}/${b.dataset.act}`, { method: 'POST', body: { techId: b.dataset.tech } });
       updateJobsBadge();
-      toast({ assign: 'Booked. The client can see who’s coming', cancel: 'Request cancelled', done: 'Marked done' }[b.dataset.act]);
+      toast({ assign: 'Booked. The client can see who’s coming', cancel: 'Cancelled', done: 'Marked done' }[b.dataset.act]);
     } catch (err) { toast(err.message); await loadJobs(); }
     renderOwnerJobs();
   };
@@ -921,7 +968,7 @@ function renderOwnerJobs() {
 
 async function renderJobs() {
   if (!state.jobs) {
-    $app.innerHTML = '<div class="card muted" style="text-align:center"><div class="spinner"></div>Loading jobs</div>';
+    $app.innerHTML = '<div class="card muted" style="text-align:center"><div class="spinner"></div>Loading</div>';
     try { await loadJobs(); } catch (err) { $app.innerHTML = `<div class="card">${esc(err.message)}</div>`; return; }
     if (!location.hash.startsWith('#/jobs')) return;
   }
@@ -931,7 +978,7 @@ async function renderJobs() {
 // Keep jobs fresh, and buzz when a new request arrives.
 let knownJobs = null;
 async function pollJobs() {
-  if (!state.user || document.visibilityState !== 'visible' || document.activeElement?.tagName === 'INPUT') return;
+  if (!state.user || document.visibilityState !== 'visible' || ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
   try {
     const before = JSON.stringify(state.jobs);
     await loadJobs();
@@ -941,16 +988,151 @@ async function pollJobs() {
       navigator.vibrate?.([120, 60, 120]);
     }
     knownJobs = new Set(ids);
-    if (location.hash.startsWith('#/jobs') && JSON.stringify(state.jobs) !== before && !$app.querySelector('button:disabled')) renderJobs();
+    if (location.hash.startsWith('#/jobs') && JSON.stringify(state.jobs) !== before && !$app.querySelector('button:disabled, details[open]')) renderJobs();
   } catch {}
 }
 setInterval(pollJobs, 4000);
+
+// ---------- admin: team and locations (owner only) ----------
+state.admin = null;
+state.view.adminTab = 'team';
+const PIN_NOTE = { demo: 'Demo PIN', admin: 'PIN set', server: 'PIN set on the server', none: 'No PIN yet' };
+
+async function renderAdmin(sub, id) {
+  if (!isOwner()) { location.hash = '#/upload'; return; }
+  if (!state.admin) {
+    $app.innerHTML = '<div class="card muted" style="text-align:center"><div class="spinner"></div>Loading</div>';
+    try { state.admin = await api('/api/admin'); } catch (err) { $app.innerHTML = `<div class="card">${esc(err.message)}</div>`; return; }
+  }
+  if (sub === 'tech') return renderTechForm(id);
+  if (sub === 'location') return renderLocationForm(id);
+  const tab = state.view.adminTab;
+  const { techs, locations } = state.admin;
+  const lname = (lid) => locations.find((l) => l.id === lid)?.name || '';
+  const active = techs.filter((t) => t.active !== false), gone = techs.filter((t) => t.active === false);
+  $app.innerHTML = `
+    <h1>Admin</h1>
+    <div class="seg" id="adm-seg" style="margin-bottom:16px">
+      <button data-t="team" class="${tab === 'team' ? 'on' : ''}">Team (${active.length})</button>
+      <button data-t="locations" class="${tab === 'locations' ? 'on' : ''}">Locations (${locations.filter((l) => l.status !== 'hidden').length})</button>
+    </div>
+    ${tab === 'team' ? `
+      ${active.map((t) => `<a class="card list-item" href="#/admin/tech/${t.id}"><span class="mono-s">${esc(t.name[0])}</span><div class="meta"><div class="title">${esc(t.name)}${t.sample ? ' <span class="muted small">(sample)</span>' : ''}</div>
+        <div class="muted small">${esc(t.locationIds.map(lname).filter(Boolean).join(', '))} · ${t.serviceIds.length} services</div>
+        <div class="muted small">${PIN_NOTE[t.pin]}${t.oncall.on ? ' · <span style="color:var(--ok)">On call</span>' : ''}</div></div><span class="chev">${icon('right')}</span></a>`).join('')}
+      <a class="btn btn-primary" href="#/admin/tech/new" style="margin-top:4px">Add an artist</a>
+      ${gone.length ? `<div class="section-label">No longer on the team</div>${gone.map((t) => `<div class="card list-item"><div class="meta"><div class="title">${esc(t.name)}</div><div class="muted small">Can’t sign in. Their past work stays in Posts</div></div><button class="btn-ghost" style="min-height:44px" data-restore="${t.id}">Bring back</button></div>`).join('')}` : ''}
+      <p class="muted small" style="margin-top:16px">Tina’s own PIN is set on the server (PIN_HASH_TINA). See the README</p>`
+    : `
+      ${locations.map((l) => `<a class="card list-item" href="#/admin/location/${l.id}"><div class="meta"><div class="title">${esc(l.name)}</div>
+        <div class="muted small">${esc(l.address || 'No address yet')}</div>
+        <span class="status ${l.status === 'open' ? 'ready' : l.status === 'coming-soon' ? 'needs_approval' : 'posted'}">${{ open: 'Open', 'coming-soon': 'Coming soon', hidden: 'Hidden' }[l.status]} · ${techs.filter((t) => t.active !== false && t.locationIds.includes(l.id)).length} artists</span></div><span class="chev">${icon('right')}</span></a>`).join('')}
+      <a class="btn btn-primary" href="#/admin/location/new" style="margin-top:4px">Add a location</a>`}`;
+  document.getElementById('adm-seg').onclick = (e) => { const t = e.target.closest('[data-t]')?.dataset.t; if (t) { state.view.adminTab = t; renderAdmin(); } };
+  $app.onclick = async (e) => {
+    const r = e.target.closest('[data-restore]');
+    if (!r) return;
+    try { state.admin = await api(`/api/admin/techs/${r.dataset.restore}/restore`, { method: 'POST', body: {} }); await refreshConfig(); toast('Back on the team'); renderAdmin(); }
+    catch (err) { toast(err.message); }
+  };
+}
+async function refreshConfig() { state.config = await api('/api/config'); state.jobs = null; }
+
+function renderTechForm(id) {
+  const isNew = id === 'new';
+  const t = isNew ? { name: '', bio: '', instagram: '', specialties: [], serviceIds: [], locationIds: [], pin: 'none' } : state.admin.techs.find((x) => x.id === id);
+  if (!t) { location.hash = '#/admin'; return; }
+  const { services, serviceGroups } = state.config.brand;
+  const locs = state.admin.locations.filter((l) => l.status !== 'hidden');
+  const sel = { services: new Set(t.serviceIds), locs: new Set(t.locationIds) };
+  $app.innerHTML = `
+    <a class="back" href="#/admin">${icon('left')}Admin</a>
+    <h1 style="margin-top:8px">${isNew ? 'Add an artist' : esc(t.name)}</h1>
+    <form id="tf" class="form" novalidate>
+      <label>Name<input class="field" name="name" value="${esc(t.name)}" autocomplete="off" required></label>
+      <div class="lbl">Works at</div>
+      <div class="chips" data-set="locs">${locs.map((l) => `<button type="button" class="chip ${sel.locs.has(l.id) ? 'on' : ''}" data-v="${l.id}">${esc(l.name)}</button>`).join('')}</div>
+      <div class="lbl">Services they do</div>
+      ${serviceGroups.map((g) => `<div class="menu-group">${esc(g)}</div><div class="chips" data-set="services">${services.filter((s) => s.group === g).map((s) => `<button type="button" class="chip ${sel.services.has(s.id) ? 'on' : ''}" data-v="${s.id}">${esc(s.name)}</button>`).join('')}</div>`).join('')}
+      <button type="button" class="link" id="all-svc" style="margin-top:8px">Select all services</button>
+      <label>Short bio, shown on their public page<textarea class="field" name="bio" rows="3">${esc(t.bio)}</textarea></label>
+      <label>Specialties, separated by commas<input class="field" name="specialties" value="${esc(t.specialties.join(', '))}"></label>
+      <label>Instagram<input class="field" name="instagram" value="${esc(t.instagram || '')}" placeholder="@handle" autocapitalize="off"></label>
+      <label>${isNew ? 'PIN to sign in (4 to 6 digits)' : `New PIN <span class="muted">(leave blank to keep: ${PIN_NOTE[t.pin].toLowerCase()})</span>`}<input class="field" name="pin" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" ${t.pin === 'server' ? 'disabled placeholder="Set on the server"' : ''}></label>
+      <p class="form-error" role="alert"></p>
+      <button class="btn-primary" id="save">${isNew ? 'Add to the team' : 'Save'}</button>
+      ${isNew ? '' : `<button type="button" class="btn-ghost" id="remove" style="width:100%;margin-top:8px">Remove from the team</button>
+        <p class="muted small" style="margin-top:8px">Removing stops their sign-in and takes them off the public site. Their past sets stay, and you can bring them back later</p>`}
+    </form>`;
+  const f = document.getElementById('tf');
+  f.onclick = async (e) => {
+    const c = e.target.closest('[data-set] [data-v]');
+    if (c) { const set = sel[c.closest('[data-set]').dataset.set]; set.has(c.dataset.v) ? set.delete(c.dataset.v) : set.add(c.dataset.v); c.classList.toggle('on'); return; }
+    if (e.target.closest('#all-svc')) { services.forEach((s) => sel.services.add(s.id)); f.querySelectorAll('[data-set="services"] .chip').forEach((x) => x.classList.add('on')); return; }
+    const rm = e.target.closest('#remove');
+    if (rm) {
+      if (!rm.dataset.armed) { rm.dataset.armed = '1'; rm.textContent = `Tap again to remove ${t.name}`; return; }
+      try { state.admin = await api(`/api/admin/techs/${id}/remove`, { method: 'POST', body: {} }); await refreshConfig(); toast(`${t.name} is off the team`); location.hash = '#/admin'; }
+      catch (err) { toast(err.message); }
+    }
+  };
+  f.onsubmit = async (e) => {
+    e.preventDefault();
+    const fd = new FormData(f);
+    const body = { name: fd.get('name'), bio: fd.get('bio'), specialties: fd.get('specialties'), instagram: fd.get('instagram'), serviceIds: [...sel.services], locationIds: [...sel.locs] };
+    if (fd.get('pin')) body.pin = fd.get('pin');
+    const btn = document.getElementById('save'); btn.disabled = true;
+    try {
+      state.admin = await api(isNew ? '/api/admin/techs' : `/api/admin/techs/${id}`, { method: isNew ? 'POST' : 'PATCH', body });
+      await refreshConfig();
+      toast(isNew ? `${body.name} can sign in now` : 'Saved'); location.hash = '#/admin';
+    } catch (err) { f.querySelector('.form-error').textContent = err.message; btn.disabled = false; }
+  };
+}
+
+function renderLocationForm(id) {
+  const isNew = id === 'new';
+  const l = isNew ? { name: '', status: 'open', address: '', hours: 'Open 24 hours', hoursDetail: '', phone: '', lat: null, lng: null } : state.admin.locations.find((x) => x.id === id);
+  if (!l) { location.hash = '#/admin'; return; }
+  let status = l.status;
+  $app.innerHTML = `
+    <a class="back" href="#/admin">${icon('left')}Admin</a>
+    <h1 style="margin-top:8px">${isNew ? 'Add a location' : esc(l.name)}</h1>
+    <form id="lf" class="form" novalidate>
+      <label>Name<input class="field" name="name" value="${esc(l.name)}" placeholder="Historic Core, DTLA"></label>
+      <div class="lbl">Status</div>
+      <div class="seg" id="st">${[['open', 'Open'], ['coming-soon', 'Coming soon'], ['hidden', 'Hidden']].map(([v, t]) => `<button type="button" data-v="${v}" class="${status === v ? 'on' : ''}">${t}</button>`).join('')}</div>
+      <label>Address<input class="field" name="address" value="${esc(l.address || '')}" autocomplete="off"></label>
+      <label>Map point <span class="muted">(in Google Maps, long-press the spot and copy the numbers)</span><input class="field" name="point" value="${l.lat != null ? `${l.lat}, ${l.lng}` : ''}" placeholder="34.0464, -118.2538" inputmode="decimal"></label>
+      <label>Hours<input class="field" name="hours" value="${esc(l.hours || '')}"></label>
+      <label>Hours detail<input class="field" name="hoursDetail" value="${esc(l.hoursDetail || '')}" placeholder="Walk-ins 9am to 8pm, appointments any hour after that"></label>
+      <label>Phone<input class="field" name="phone" type="tel" value="${esc(l.phone || '')}"></label>
+      <p class="form-error" role="alert"></p>
+      <button class="btn-primary" id="save">${isNew ? 'Add location' : 'Save'}</button>
+      <p class="muted small" style="margin-top:8px">Open locations show on the website, the map and the request form. Coming soon shows a card without booking. Hidden takes it off the website</p>
+    </form>`;
+  const f = document.getElementById('lf');
+  document.getElementById('st').onclick = (e) => { const b = e.target.closest('[data-v]'); if (!b) return; status = b.dataset.v; f.querySelectorAll('#st button').forEach((x) => x.classList.toggle('on', x === b)); };
+  f.onsubmit = async (e) => {
+    e.preventDefault();
+    const fd = new FormData(f);
+    const body = { ...Object.fromEntries(fd), status };
+    const btn = document.getElementById('save'); btn.disabled = true;
+    try {
+      state.admin = await api(isNew ? '/api/admin/locations' : `/api/admin/locations/${id}`, { method: isNew ? 'POST' : 'PATCH', body });
+      await refreshConfig(); state.view.adminTab = 'locations';
+      toast('Saved'); location.hash = '#/admin';
+    } catch (err) { f.querySelector('.form-error').textContent = err.message; btn.disabled = false; }
+  };
+}
 
 // ---------- router ----------
 function render() {
   const h = location.hash || '#/upload';
   const [, route, id] = h.split('/');
-  const tab = route === 'jobs' ? 'jobs' : route === 'posts' || route === 'post' ? 'posts' : 'upload';
+  if (route === 'admin' && !id) state.admin = null; // fresh list each visit
+  const tab = route === 'jobs' ? 'jobs' : route === 'posts' || route === 'post' ? 'posts' : route === 'admin' ? 'admin' : 'upload';
+  document.getElementById('admin-btn')?.classList.toggle('on', route === 'admin');
   document.querySelectorAll('.tabs a').forEach((a) => a.classList.toggle('on', a.dataset.tab === tab));
   $app.onclick = null;
   if (route !== 'post') state.view.editing = false;
@@ -958,6 +1140,7 @@ function render() {
   if (!state.user || !state.config) return;
   if (!isOwner() && (route === 'posts' || route === 'post')) { location.hash = '#/upload'; return; }
   if (route === 'jobs') renderJobs();
+  else if (route === 'admin') renderAdmin(id, h.split('/')[3]);
   else if (route === 'posts') renderPosts();
   else if (route === 'post') renderPost(id);
   else if (route === 'sent') renderSent(id);

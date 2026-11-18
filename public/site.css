@@ -165,7 +165,7 @@ textarea.field { resize: vertical; line-height: 1.4; }
 .rq-head { display: grid; gap: 8px; padding: 8px 0 24px; }
 .rq-head.ok h1 { color: var(--ok); }
 .rq-card { max-width: 560px; }
-.facts { display: grid; gap: 10px; }
+.facts { display: grid; gap: 12px; }
 .facts > div { display: grid; grid-template-columns: 72px 1fr; gap: 12px; font-size: 16px; }
 .facts span { color: var(--ink-3); }
 .facts b { font-weight: 500; }

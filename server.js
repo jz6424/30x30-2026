@@ -11,6 +11,7 @@ import { draftCaptions } from './lib/captions.js';
 import { resolveBooking, addonAttributes } from './lib/menu.js';
 import { createAuth } from './lib/auth.js';
 import { createDispatch } from './lib/dispatch.js';
+import { setupTeam } from './lib/team.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(ROOT, 'public');
@@ -22,8 +23,7 @@ const PORT = Number(process.env.PORT || 3000);
 const brand = JSON.parse(fs.readFileSync(path.join(ROOT, 'lib/brand.json'), 'utf8'));
 // Set BOOKING_URL (e.g. in Render) to the studio's real booking page.
 if (process.env.BOOKING_URL) brand.bookingUrl = process.env.BOOKING_URL;
-const techById = (id) => brand.techs.find((t) => t.id === id) || null;
-const auth = createAuth(brand);
+const techById = (id) => brand.techs.find((t) => t.id === id && t.active !== false) || null;
 const isPublic = (post) => (post.status === 'ready' || post.status === 'posted') && !post.stage;
 
 fs.mkdirSync(PHOTOS, { recursive: true });
@@ -34,6 +34,8 @@ let db = { posts: [] };
 try { db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')); } catch {}
 const save = () => fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
 const findPost = (id) => db.posts.find((p) => p.id === id);
+const team = setupTeam(brand, db, save); // team + locations live in db from here on
+const auth = createAuth(brand, db, save);
 const dispatch = createDispatch(brand, db, save);
 setInterval(() => dispatch.sweep(), 30_000).unref();
 
@@ -93,7 +95,8 @@ function retakeTip(photo) {
 async function buildPost({ techId, tech, locationId, serviceId, option, gel, addons, photos }) {
   const techInfo = techById(techId);
   if (!techInfo && !tech) throw Object.assign(new Error('Pick who did the set'), { status: 400 });
-  const location = brand.locations.find((l) => l.id === locationId && l.status === 'open') || brand.locations.find((l) => l.status === 'open');
+  const open = brand.locations.filter((l) => l.status === 'open');
+  const location = open.find((l) => l.id === locationId) || open.find((l) => techInfo?.locationIds?.includes(l.id)) || open[0];
   const id = crypto.randomUUID().slice(0, 8);
   const dir = path.join(PHOTOS, id);
   fs.mkdirSync(dir, { recursive: true });
@@ -249,10 +252,11 @@ function publicData() {
       photos: [p.heroId, ...p.carouselIds].map((id) => p.photos.find((x) => x.id === id)).filter(Boolean).map((x) => ({ url: x.url, width: x.width, height: x.height })),
       approvedAt: p.approvedAt,
     }));
-  const { name, handle, address, hours, taglines, bookingUrl, instagramUrl, techs, locations, services } = brand;
+  const { name, handle, address, hours, taglines, bookingUrl, instagramUrl, services } = brand;
   return {
     brand: { name, handle, address, hours, taglines, bookingUrl, instagramUrl },
-    techs, locations,
+    techs: brand.techs.filter((t) => t.active !== false).map(({ id, name, bio, instagram, specialties, serviceIds, locationIds, sample }) => ({ id, name, bio, instagram, specialties, serviceIds, locationIds, sample })),
+    locations: brand.locations.filter((l) => l.status !== 'hidden'),
     services: services.map(({ id, name, price, group, options, minutes, gel }) => ({ id, name, price, group, options, minutes })),
     onCall: dispatch.onCallNow(),
     onDemandNote: brand.onDemand?.note || '',
@@ -383,6 +387,32 @@ const server = http.createServer(async (req, res) => {
 
       // ----- owner only: review, approve, share, edit, delete -----
       if (!owner) return send(res, 403, { error: 'Only the owner can do that' });
+
+      // ----- admin: the team and the locations -----
+      if (parts[1] === 'admin') {
+        const adminData = () => ({
+          techs: brand.techs.map((t) => ({ ...t, pin: auth.pinSource(t.id), oncall: dispatch.oncallOf(t.id) })),
+          locations: brand.locations,
+        });
+        const body = req.method === 'GET' ? {} : await readBody(req, 20_000);
+        const [, , kind, id, act] = parts;
+        if (req.method === 'GET' && !kind) return send(res, 200, adminData());
+        if (kind === 'techs' && req.method === 'POST' && !id) {
+          if (!/^\d{4,6}$/.test(String(body.pin || ''))) return send(res, 400, { error: 'Give them a 4 to 6 digit PIN to sign in with' });
+          const t = team.addTech(body); auth.setPin(t.id, body.pin);
+          return send(res, 200, { ...adminData(), id: t.id });
+        }
+        if (kind === 'techs' && req.method === 'PATCH' && id) {
+          team.editTech(id, body);
+          if (body.pin) auth.setPin(id, body.pin);
+          return send(res, 200, adminData());
+        }
+        if (kind === 'techs' && req.method === 'POST' && act === 'remove') { team.setActive(id, false); dispatch.releaseTech(id); return send(res, 200, adminData()); }
+        if (kind === 'techs' && req.method === 'POST' && act === 'restore') { team.setActive(id, true); return send(res, 200, adminData()); }
+        if (kind === 'locations' && req.method === 'POST' && !id) { const l = team.addLocation(body); return send(res, 200, { ...adminData(), id: l.id }); }
+        if (kind === 'locations' && req.method === 'PATCH' && id) { team.editLocation(id, body); return send(res, 200, adminData()); }
+        return send(res, 404, { error: 'Unknown admin route' });
+      }
       if (req.method === 'POST' && url.pathname === '/api/posts/approve-all') {
         const now = new Date().toISOString();
         for (const p of db.posts.filter((p) => p.status === 'needs_approval' && p.heroId && !p.stage)) {

@@ -12,11 +12,11 @@ Built for Converge.AI at Stanford, Nov 20 2026.
 | `/` | Clients | Home with the latest work, nail artists and locations |
 | `/tech/:id` | Clients | An artist's page: bio, specialties, Instagram, Book button, and a gallery of their approved sets |
 | `/request` | Clients | Request an artist now or at a set time, at the studio or as a house call, then follow it live |
-| `/locations` | Clients | Map (Leaflet + OpenStreetMap), hours, directions and a gallery per location; the second location shows as coming soon |
+| `/locations` | Clients | Map of every open location (Leaflet + OpenStreetMap), hours, directions, who works there and a gallery per location |
 
 A set appears on the public pages the moment Tina approves it in `/studio` (the public pages refresh every 4 seconds). Only approved sets and their photos are public; captions, drafts and skipped photos are not.
 
-The team and locations live in `lib/brand.json` (`techs`, `locations`). **The three techs (Mia, Jasmine, Kim) are samples** with made-up bios: replace them with the real team. Set `BOOKING_URL` (for example in Render's environment settings) to the studio's booking page; until then the Book buttons say online booking is coming soon.
+Tina manages the team and the locations in `/studio` → Admin (the sliders icon at the top). They start from `lib/brand.json` and are saved in `data/db.json` after the first run. **Mia, Jasmine, Kim and the Arts District location are samples**: edit or remove them in Admin. Set `BOOKING_URL` (for example in Render's environment settings) to the studio's booking page; until then the Book buttons say online booking is coming soon.
 
 ## Staff sign-in (PINs)
 
@@ -30,7 +30,7 @@ The team and locations live in `lib/brand.json` (`techs`, `locations`). **The th
 **The demo PINs are for testing only.** To set real ones on Render:
 
 1. Run `npm run hash-pin -- 482913` (your chosen PIN). It prints a hash like `scrypt$...$...`.
-2. In Render, open the service's Environment tab and set `PIN_HASH_TINA` to that hash. Do the same for `PIN_HASH_MIA`, `PIN_HASH_JASMINE` and `PIN_HASH_KIM` (the name is `PIN_HASH_` plus the tech's id from `lib/brand.json`, in capitals).
+2. In Render, open the service's Environment tab and set `PIN_HASH_TINA` to that hash. Do the same for `PIN_HASH_MIA`, `PIN_HASH_JASMINE` and `PIN_HASH_KIM` (the name is `PIN_HASH_` plus the tech's id, in capitals). Tina can also set or reset a tech's PIN in Admin; a `PIN_HASH_` env var always wins over it.
 3. Save. Render redeploys, and the demo PIN for that person stops working.
 
 How it works:
@@ -43,14 +43,14 @@ How it works:
 
 ## On-demand requests (Uber-style)
 
-Clients can ask for an artist right now or at a set time, at the studio or at their home, hotel or office. **Demo grade: no card is charged and payouts are only numbers.**
+Clients can ask for an artist right now or at a set time, at any open location or at their home, hotel or office. No money is handled: the menu price is shown for reference, and clients pay at the appointment.
 
 1. **Client** (`/request`, or "Request an artist" on the home page and each artist's page): picks a service, when, where (address or "Use my current location"), any artist or a specific one, and leaves a first name and phone number. No account: the phone keeps a private link to follow the request.
-2. **Artists** (`/studio`, Jobs tab): turn **On call** on and choose right-now jobs, booked-ahead jobs or both. With **House calls** on, they also set how far they'll go, a travel fee and the smallest job they'll take. They only see requests they qualify for (service, distance, minimum, not busy with another right-now job), with what they'd make. Accept or decline. The client's address and phone appear only once the job is theirs.
-3. **Tina** (Jobs tab): sees every request and who is on call. She chooses **First to accept** (the first artist who says yes is booked) or **I choose** (artists say yes, she gives the job to one). She can cancel or mark jobs done, and sets the artist's share of the price (travel fees go to the artist in full).
+2. **Artists** (`/studio`, Jobs tab): turn **On call** on and choose right-now jobs, booked-ahead jobs or both. With **House calls** on, they also set how far they'll go. They only see requests they qualify for: a service they do, at a location they work at (or within their distance), and a time they aren't already booked. Accept or decline. The client's address and phone appear only once the job is theirs.
+3. **Tina** (Bookings tab): sees the schedule day by day, filtered by location or house calls, requests still waiting for an artist, and who is on call. She chooses **First to accept** (the first artist who says yes is booked) or **I choose** (artists say yes, she gives the job to one), and can cancel or mark jobs done.
 4. **Client's page** updates every few seconds: Finding your artist, then "Mia is booked". A right-now request nobody takes closes after 20 minutes.
 
-Which services each artist does is `serviceIds` in `lib/brand.json`; durations are `minutes` on each service (estimates). Defaults live under `onDemand`. Still to do for real use: payments and payouts (Stripe Connect), text messages to clients, address lookup for typed addresses (distance is known only with "Use my current location"), and shifts, so walk-in staff on the floor are tried first.
+Durations are `minutes` on each service in `lib/brand.json` (estimates). Still to do for real use: text messages to clients, address lookup for typed addresses (distance is known only with "Use my current location"), and shifts, so walk-in staff on the floor are tried first.
 
 ## Host it (fixed link for phones)
 
@@ -120,7 +120,8 @@ The vision step is pluggable (`lib/vision.js`). Providers: `claude` (used when `
 - `lib/captions.js`: caption drafting with Claude, or templates in the studio voice.
 - `public/`: the app (no framework, no build step), manifest, icons and service worker for Add to Home Screen.
 - `scripts/phone.js`: `npm run phone`, the app plus an HTTPS tunnel and QR code.
-- `lib/dispatch.js`: on-demand requests: who qualifies, payouts, accept, assign, expiry.
+- `lib/dispatch.js`: on-demand requests: who qualifies, schedule clashes, accept, assign, expiry.
+- `lib/team.js`: the team and locations that Tina edits in Admin.
 - `lib/auth.js`: PIN sign-in, signed session cookie, rate limit.
 - `scripts/hash-pin.js`: `npm run hash-pin -- <pin>` prints the value for a `PIN_HASH_<ID>` env var.
 

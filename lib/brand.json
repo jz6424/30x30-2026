@@ -290,7 +290,11 @@
         "rubber-base",
         "regular-polish",
         "cut-file"
-      ]
+      ],
+      "locationIds": [
+        "dtla"
+      ],
+      "active": true
     },
     {
       "id": "jasmine",
@@ -310,7 +314,12 @@
         "acrylic",
         "regular-polish",
         "cut-file"
-      ]
+      ],
+      "locationIds": [
+        "dtla",
+        "arts"
+      ],
+      "active": true
     },
     {
       "id": "kim",
@@ -332,7 +341,12 @@
         "gel-x",
         "regular-polish",
         "cut-file"
-      ]
+      ],
+      "locationIds": [
+        "dtla",
+        "arts"
+      ],
+      "active": true
     }
   ],
   "locations": [
@@ -348,20 +362,32 @@
       "phone": "(323) 508-3169"
     },
     {
-      "id": "second",
-      "name": "Second location",
+      "id": "arts",
+      "name": "Arts District (sample)",
+      "sample": true,
+      "status": "open",
+      "address": "Sample address, Arts District, Los Angeles",
+      "lat": 34.0407,
+      "lng": -118.2353,
+      "hours": "Open 24 hours",
+      "hoursDetail": "Sample location for the demo. Replace it in Studio > Admin",
+      "phone": null
+    },
+    {
+      "id": "next",
+      "name": "Next location",
       "status": "coming-soon",
       "address": null,
       "lat": null,
       "lng": null,
       "hours": "Coming soon",
-      "hoursDetail": "Opening details to come"
+      "hoursDetail": "Opening details to come",
+      "phone": null
     }
   ],
   "onDemand": {
     "assign": "first",
-    "payoutPct": 60,
     "expireMinutes": 20,
-    "note": "Demo only: no card is charged and payouts are shown as numbers."
+    "note": "No payment is taken online. You pay at your appointment."
   }
 }
