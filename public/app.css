@@ -195,3 +195,33 @@ details summary { cursor: pointer; color: var(--gold-ink); font-weight: 500; fon
 .pinpad button:hover { background: var(--paper-2); }
 .pinpad button.ok { background: var(--ink); color: var(--paper); font-family: var(--sans); font-size: 17px; font-weight: 600; border-color: var(--ink); }
 .pinpad .ico { width: 22px; height: 22px; }
+
+/* on-demand jobs */
+@media (max-width: 440px) { .top.three .brand > div { display: none; } .top.three .tabs a { padding: 8px 10px; } }
+.switch { position: relative; width: 52px; min-height: 32px; height: 32px; padding: 0; border-radius: 16px; background: rgba(43, 36, 32, .18); flex: none; }
+.switch i { position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(43, 36, 32, .2); transition: transform .18s var(--ease); }
+.switch.on { background: var(--ok); }
+.switch.on i { transform: translateX(20px); }
+.oncall.is-on { border-color: rgba(78, 122, 87, .35); }
+.oc-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.oc-t { font-family: var(--serif); font-size: 20px; margin-bottom: 2px; }
+.oc-set { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 4px; }
+.lbl { font-size: 14px; font-weight: 600; color: var(--ink); margin: 16px 0 8px; }
+.job .job-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
+.job .title { font-family: var(--serif); font-size: 20px; margin-bottom: 4px; }
+.job .pay { text-align: right; flex: none; }
+.job .pay b { display: block; font-family: var(--serif); font-size: 24px; font-weight: 500; color: var(--gold-ink); font-variant-numeric: tabular-nums lining-nums; }
+.job .pay span { font-size: 12px; color: var(--ink-3); }
+.job.mine { border-color: rgba(78, 122, 87, .35); }
+.facts { display: grid; gap: 8px; margin-bottom: 8px; }
+.facts > div { display: grid; grid-template-columns: 64px 1fr; gap: 12px; font-size: 15px; }
+.facts span { color: var(--ink-3); }
+.facts b { font-weight: 500; }
+.facts a { color: var(--gold-ink); }
+.waiting { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; }
+.offers { display: grid; gap: 8px; margin: 12px 0 0; }
+.offer { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--paper); border-radius: 12px; padding: 12px; }
+.offer .btn-primary { width: auto; min-height: 44px; font-size: 15px; }
+.team { padding: 4px 16px; }
+.team-row { display: flex; justify-content: space-between; align-items: center; min-height: 48px; }
+.team-row + .team-row { border-top: 1px solid var(--line); }

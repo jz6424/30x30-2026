@@ -28,14 +28,16 @@
       "name": "Custom Nails",
       "group": "Enhancements",
       "price": "$150+",
-      "desc": "Custom set with nail art. The artist chooses designs within the appointment time."
+      "desc": "Custom set with nail art. The artist chooses designs within the appointment time.",
+      "minutes": 150
     },
     {
       "id": "russian-gel",
       "name": "Russian Gel",
       "group": "Enhancements",
       "price": "$100+",
-      "desc": "Detailed cuticle work with builder gel for a smooth, even finish."
+      "desc": "Detailed cuticle work with builder gel for a smooth, even finish.",
+      "minutes": 120
     },
     {
       "id": "polygel",
@@ -49,10 +51,12 @@
         },
         {
           "id": "fill",
-          "label": "Fill"
+          "label": "Fill",
+          "minutes": 60
         }
       ],
-      "desc": "Added strength for longer natural nails without extensions."
+      "desc": "Added strength for longer natural nails without extensions.",
+      "minutes": 90
     },
     {
       "id": "builder-gel",
@@ -66,17 +70,20 @@
         },
         {
           "id": "fill",
-          "label": "Fill"
+          "label": "Fill",
+          "minutes": 60
         }
       ],
-      "desc": "Added strength for natural nails, with fills instead of full removal. Lasts 2–4 weeks."
+      "desc": "Added strength for natural nails, with fills instead of full removal. Lasts 2–4 weeks.",
+      "minutes": 75
     },
     {
       "id": "sculpted-gel",
       "name": "Sculpted Gel / Dual Form",
       "group": "Enhancements",
       "price": "$100+",
-      "desc": "Adds length without tips for a natural-looking finish."
+      "desc": "Adds length without tips for a natural-looking finish.",
+      "minutes": 120
     },
     {
       "id": "acrylic",
@@ -90,24 +97,28 @@
         },
         {
           "id": "fill",
-          "label": "Fill"
+          "label": "Fill",
+          "minutes": 60
         }
       ],
-      "desc": "Traditional acrylic for a durable, shape-holding finish."
+      "desc": "Traditional acrylic for a durable, shape-holding finish.",
+      "minutes": 90
     },
     {
       "id": "gel-x",
       "name": "Gel X",
       "group": "Enhancements",
       "price": "$75+",
-      "desc": "Full set extensions for length, 2–4 weeks of wear."
+      "desc": "Full set extensions for length, 2–4 weeks of wear.",
+      "minutes": 75
     },
     {
       "id": "rubber-base",
       "name": "Rubber / Fiber Base",
       "group": "Enhancements",
       "price": "$65+",
-      "desc": "Support for thin natural nails that need more strength than gel polish."
+      "desc": "Support for thin natural nails that need more strength than gel polish.",
+      "minutes": 60
     },
     {
       "id": "regular-polish",
@@ -123,10 +134,12 @@
         {
           "id": "toes",
           "label": "Toes",
-          "price": "$25"
+          "price": "$25",
+          "minutes": 45
         }
       ],
-      "gel": 20
+      "gel": 20,
+      "minutes": 30
     },
     {
       "id": "cut-file",
@@ -142,10 +155,12 @@
         {
           "id": "toes",
           "label": "Toes",
-          "price": "$20"
+          "price": "$20",
+          "minutes": 35
         }
       ],
-      "gel": 20
+      "gel": 20,
+      "minutes": 20
     }
   ],
   "serviceGroups": [
@@ -266,6 +281,15 @@
         "Gel X",
         "Chrome / Cat Eye",
         "French"
+      ],
+      "serviceIds": [
+        "russian-gel",
+        "gel-x",
+        "builder-gel",
+        "polygel",
+        "rubber-base",
+        "regular-polish",
+        "cut-file"
       ]
     },
     {
@@ -278,6 +302,14 @@
         "Custom Nails",
         "Nail Art",
         "Sculpted Gel"
+      ],
+      "serviceIds": [
+        "custom",
+        "sculpted-gel",
+        "gel-x",
+        "acrylic",
+        "regular-polish",
+        "cut-file"
       ]
     },
     {
@@ -291,6 +323,15 @@
         "Builder Gel / Dip",
         "Hard Gel / Polygel",
         "Nail Repair"
+      ],
+      "serviceIds": [
+        "acrylic",
+        "builder-gel",
+        "polygel",
+        "rubber-base",
+        "gel-x",
+        "regular-polish",
+        "cut-file"
       ]
     }
   ],
@@ -316,5 +357,11 @@
       "hours": "Coming soon",
       "hoursDetail": "Opening details to come"
     }
-  ]
+  ],
+  "onDemand": {
+    "assign": "first",
+    "payoutPct": 60,
+    "expireMinutes": 20,
+    "note": "Demo only: no card is charged and payouts are shown as numbers."
+  }
 }

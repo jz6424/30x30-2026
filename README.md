@@ -11,6 +11,7 @@ Built for Converge.AI at Stanford, Nov 20 2026.
 | `/studio` | Staff | The hub: techs upload sets (picking who did it from the team list), Tina approves and shares to Instagram |
 | `/` | Clients | Home with the latest work, nail artists and locations |
 | `/tech/:id` | Clients | An artist's page: bio, specialties, Instagram, Book button, and a gallery of their approved sets |
+| `/request` | Clients | Request an artist now or at a set time, at the studio or as a house call, then follow it live |
 | `/locations` | Clients | Map (Leaflet + OpenStreetMap), hours, directions and a gallery per location; the second location shows as coming soon |
 
 A set appears on the public pages the moment Tina approves it in `/studio` (the public pages refresh every 4 seconds). Only approved sets and their photos are public; captions, drafts and skipped photos are not.
@@ -39,6 +40,17 @@ How it works:
 - After 5 wrong PINs for one name (or 20 overall) from the same device, sign-in is locked for 15 minutes.
 - Roles are checked on the server for every `/api` route, so a tech can't approve by calling the API directly. A tech only sees their own sets, and photos of unapproved sets are only served to Tina and the tech who uploaded them.
 - The sign-out button is at the top right.
+
+## On-demand requests (Uber-style)
+
+Clients can ask for an artist right now or at a set time, at the studio or at their home, hotel or office. **Demo grade: no card is charged and payouts are only numbers.**
+
+1. **Client** (`/request`, or "Request an artist" on the home page and each artist's page): picks a service, when, where (address or "Use my current location"), any artist or a specific one, and leaves a first name and phone number. No account: the phone keeps a private link to follow the request.
+2. **Artists** (`/studio`, Jobs tab): turn **On call** on and choose right-now jobs, booked-ahead jobs or both. With **House calls** on, they also set how far they'll go, a travel fee and the smallest job they'll take. They only see requests they qualify for (service, distance, minimum, not busy with another right-now job), with what they'd make. Accept or decline. The client's address and phone appear only once the job is theirs.
+3. **Tina** (Jobs tab): sees every request and who is on call. She chooses **First to accept** (the first artist who says yes is booked) or **I choose** (artists say yes, she gives the job to one). She can cancel or mark jobs done, and sets the artist's share of the price (travel fees go to the artist in full).
+4. **Client's page** updates every few seconds: Finding your artist, then "Mia is booked". A right-now request nobody takes closes after 20 minutes.
+
+Which services each artist does is `serviceIds` in `lib/brand.json`; durations are `minutes` on each service (estimates). Defaults live under `onDemand`. Still to do for real use: payments and payouts (Stripe Connect), text messages to clients, address lookup for typed addresses (distance is known only with "Use my current location"), and shifts, so walk-in staff on the floor are tried first.
 
 ## Host it (fixed link for phones)
 
@@ -108,6 +120,7 @@ The vision step is pluggable (`lib/vision.js`). Providers: `claude` (used when `
 - `lib/captions.js`: caption drafting with Claude, or templates in the studio voice.
 - `public/`: the app (no framework, no build step), manifest, icons and service worker for Add to Home Screen.
 - `scripts/phone.js`: `npm run phone`, the app plus an HTTPS tunnel and QR code.
+- `lib/dispatch.js`: on-demand requests: who qualifies, payouts, accept, assign, expiry.
 - `lib/auth.js`: PIN sign-in, signed session cookie, rate limit.
 - `scripts/hash-pin.js`: `npm run hash-pin -- <pin>` prints the value for a `PIN_HASH_<ID>` env var.
 

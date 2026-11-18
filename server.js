@@ -10,6 +10,7 @@ import { scoreWithFallback, pickVisionProvider } from './lib/vision.js';
 import { draftCaptions } from './lib/captions.js';
 import { resolveBooking, addonAttributes } from './lib/menu.js';
 import { createAuth } from './lib/auth.js';
+import { createDispatch } from './lib/dispatch.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(ROOT, 'public');
@@ -33,6 +34,22 @@ let db = { posts: [] };
 try { db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')); } catch {}
 const save = () => fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
 const findPost = (id) => db.posts.find((p) => p.id === id);
+const dispatch = createDispatch(brand, db, save);
+setInterval(() => dispatch.sweep(), 30_000).unref();
+
+// New on-demand requests per IP: at most 8 an hour, so the form can't be spammed.
+const requestLog = new Map();
+function allowRequest(req) {
+  const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '?';
+  const recent = (requestLog.get(ip) || []).filter((t) => Date.now() - t < 3600_000);
+  if (recent.length >= 8) return false;
+  requestLog.set(ip, [...recent, Date.now()]);
+  return true;
+}
+const tokenOk = (r, t) => {
+  const a = Buffer.from(String(r.token)), b = Buffer.from(String(t || ''));
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+};
 
 // ---------- scheduling: batch in, drip out ----------
 // Assumption: one post a day, 12pm Mon–Thu, 7pm Fri–Sun (studio's evening crowd).
@@ -236,7 +253,9 @@ function publicData() {
   return {
     brand: { name, handle, address, hours, taglines, bookingUrl, instagramUrl },
     techs, locations,
-    services: services.map(({ id, name, price, group }) => ({ id, name, price, group })),
+    services: services.map(({ id, name, price, group, options, minutes, gel }) => ({ id, name, price, group, options, minutes })),
+    onCall: dispatch.onCallNow(),
+    onDemandNote: brand.onDemand?.note || '',
     gallery,
   };
 }
@@ -294,6 +313,21 @@ const server = http.createServer(async (req, res) => {
       }
       if (req.method === 'POST' && url.pathname === '/api/logout') return send(res, 200, { ok: true }, { 'Set-Cookie': auth.clearCookie() });
 
+      // ----- on-demand requests from clients (no account; a secret link token instead) -----
+      if (req.method === 'POST' && url.pathname === '/api/requests') {
+        if (!allowRequest(req)) return send(res, 429, { error: 'Too many requests from this device. Call the studio instead' });
+        const r = dispatch.create(await readBody(req, 20_000));
+        return send(res, 200, { request: dispatch.clientView(r), token: r.token });
+      }
+      if (parts[1] === 'requests' && parts[2]) {
+        dispatch.sweep();
+        const r = dispatch.find(parts[2]);
+        const t = req.method === 'GET' ? url.searchParams.get('t') : (await readBody(req, 2_000)).t;
+        if (!r || !tokenOk(r, t)) return send(res, 404, { error: 'Request not found' });
+        if (req.method === 'GET' && !parts[3]) return send(res, 200, { request: dispatch.clientView(r) });
+        if (req.method === 'POST' && parts[3] === 'cancel') { dispatch.cancel(r, 'client'); return send(res, 200, { request: dispatch.clientView(r) }); }
+      }
+
       // ----- staff only -----
       const user = auth.userFrom(req);
       if (!user) return send(res, 401, { error: 'Please sign in', signIn: true });
@@ -321,6 +355,30 @@ const server = http.createServer(async (req, res) => {
         // A tech's upload is always theirs; the owner can upload for any tech.
         if (!owner) { body.techId = user.id; delete body.tech; }
         return send(res, 200, { post: await buildPost(body) });
+      }
+
+      // ----- on-demand jobs: techs go on call and take jobs; Tina watches and assigns -----
+      if (req.method === 'GET' && url.pathname === '/api/jobs') return send(res, 200, owner ? dispatch.ownerJobs() : dispatch.jobsFor(user.id));
+      if (req.method === 'PUT' && url.pathname === '/api/oncall') {
+        if (owner) return send(res, 400, { error: 'On call is for nail techs' });
+        return send(res, 200, { oncall: dispatch.setOncall(user.id, await readBody(req, 5_000)) });
+      }
+      if (req.method === 'PUT' && url.pathname === '/api/jobs-settings') {
+        if (!owner) return send(res, 403, { error: 'Only the owner can do that' });
+        return send(res, 200, { settings: dispatch.setSettings(await readBody(req, 5_000)) });
+      }
+      if (req.method === 'POST' && parts[1] === 'jobs' && parts[2] && parts[3]) {
+        const r = dispatch.find(parts[2]);
+        if (!r) return send(res, 404, { error: 'Job not found' });
+        const body = await readBody(req, 5_000);
+        const act = parts[3];
+        if (!owner && act === 'accept') dispatch.accept(r, user.id);
+        else if (!owner && act === 'decline') dispatch.decline(r, user.id);
+        else if (act === 'done') dispatch.done(r, owner ? null : user.id);
+        else if (owner && act === 'assign') dispatch.assign(r, body.techId);
+        else if (owner && act === 'cancel') dispatch.cancel(r, 'studio');
+        else return send(res, 403, { error: 'You can’t do that' });
+        return send(res, 200, owner ? dispatch.ownerJobs() : dispatch.jobsFor(user.id));
       }
 
       // ----- owner only: review, approve, share, edit, delete -----

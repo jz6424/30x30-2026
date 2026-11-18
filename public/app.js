@@ -630,7 +630,10 @@ async function startApp() {
   document.querySelector('[data-tab="posts"]').hidden = !isOwner();
   document.getElementById('who').textContent = state.user.name;
   document.getElementById('signout').hidden = false;
-  document.querySelector('.tabs').hidden = !isOwner();
+  document.querySelector('.tabs').hidden = false;
+  document.querySelector('.top').classList.toggle('three', isOwner());
+  state.jobs = null; knownJobs = null;
+  loadJobs().catch(() => {});
   if (!isOwner()) state.upload.techId = state.user.id;
   updateBadge();
   setupHint();
@@ -720,7 +723,7 @@ async function showSignIn() {
 
 async function signOut() {
   await fetch('/api/logout', { method: 'POST', headers: TUNNEL_HEADERS }).catch(() => {});
-  state.user = null; state.config = null; state.posts = []; state.filesCache = {};
+  state.user = null; state.config = null; state.posts = []; state.filesCache = {}; state.jobs = null;
   Object.assign(state.upload, { results: [], serviceId: null, option: null, gel: false, addons: {}, menuOpen: true });
   location.hash = '';
   showSignIn();
@@ -734,17 +737,228 @@ document.getElementById('signout').onclick = () => {
   };
 };
 
+// ---------- on-demand jobs ----------
+// Techs: go on call, see requests they can take, accept or decline.
+// Tina: sees every request, who is on call, and (if she chose to) gives each job to one pro.
+state.jobs = null;
+const fmtMins = (m) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} hr${m % 60 ? ` ${m % 60} min` : ''}`);
+const whenLabel = (j) => (j.when === 'now' ? 'Right now' : fmtSlot(j.when));
+const mapsUrl = (w) => (w.lat != null ? `https://www.google.com/maps/dir/?api=1&destination=${w.lat},${w.lng}` : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(w.address || '')}`);
+function whereLabel(w, full) {
+  if (w.type !== 'house') return 'At the studio';
+  const dist = w.distanceMi != null ? `${w.distanceMi} mi from the studio` : 'distance unknown';
+  return full && w.address ? `House call · ${w.address}` : `House call · ${dist}`;
+}
+const switchHtml = (id, on, label) => `<button type="button" class="switch ${on ? 'on' : ''}" id="${id}" role="switch" aria-checked="${on}" aria-label="${esc(label)}"><i></i></button>`;
+const choice = (key, val, opts, fmt) => `<div class="chips" data-key="${key}">${opts.map((o) => `<button type="button" class="chip ${o === val ? 'on' : ''}" data-v="${o}">${fmt(o)}</button>`).join('')}</div>`;
+
+async function loadJobs() {
+  state.jobs = await api('/api/jobs');
+  updateJobsBadge();
+  return state.jobs;
+}
+function updateJobsBadge() {
+  const b = document.getElementById('jobs-badge');
+  if (!b || !state.jobs) return;
+  const n = isOwner()
+    ? state.jobs.requests.filter((r) => r.status === 'searching' && (state.jobs.settings.assign === 'owner' ? r.accepted.length : true)).length
+    : state.jobs.open.filter((j) => !j.accepted).length;
+  b.textContent = n; b.hidden = !n;
+}
+
+function jobFacts(j, full) {
+  return `<div class="facts">
+    <div><span>When</span><b>${esc(whenLabel(j))}</b></div>
+    <div><span>Takes</span><b>About ${fmtMins(j.minutes)}</b></div>
+    <div><span>Where</span><b>${esc(whereLabel(j.where, full))}</b></div>
+    ${j.client?.name ? `<div><span>Client</span><b>${esc(j.client.name)}${j.client.phone ? ` · <a href="tel:${esc(j.client.phone.replace(/[^0-9+]/g, ''))}">${esc(j.client.phone)}</a>` : ''}</b></div>` : ''}
+    ${j.notes ? `<div><span>Notes</span><b>${esc(j.notes)}</b></div>` : ''}
+  </div>`;
+}
+
+function techJobCard(j) {
+  const head = `<div class="job-head"><div><div class="title">${esc(j.serviceName)}</div>${j.forYou ? '<span class="status needs_approval">Asked for you</span>' : ''}</div>
+    <div class="pay"><b>$${j.payout}</b><span>you make</span></div></div>`;
+  const split = `<p class="muted small">Client pays ${j.priceLabel}${j.travelFee ? ` + $${j.travelFee} travel` : ''}. ${j.travelFee ? 'The travel fee is all yours' : 'You get your share of the service price'}</p>`;
+  if (j.status === 'confirmed') {
+    return `<div class="card job mine">${head}${jobFacts(j, true)}
+      <div class="row" style="margin-top:12px">${j.where.type === 'house' ? `<a class="btn btn-line" href="${mapsUrl(j.where)}" target="_blank" rel="noopener">Directions</a>` : ''}<button class="btn-primary" data-job="${j.id}" data-act="done">Mark done</button></div></div>`;
+  }
+  if (j.status === 'done') {
+    return `<div class="card list-item job-done"><div class="meta"><div class="title">${esc(j.serviceName)}</div><div class="muted small">${esc(j.client.name)} · $${j.payout}</div></div><span class="status posted">Done</span></div>`;
+  }
+  return `<div class="card job">${head}${jobFacts(j, false)}${split}
+    ${j.accepted
+      ? `<div class="waiting"><span class="status needs_approval">You said yes. Tina is picking who takes it</span><button class="link" data-job="${j.id}" data-act="decline">Withdraw</button></div>`
+      : `<div class="row" style="margin-top:12px"><button class="btn-ghost" data-job="${j.id}" data-act="decline">Decline</button><button class="btn-primary" data-job="${j.id}" data-act="accept">Accept</button></div>`}
+    ${j.where.type === 'house' ? '<p class="muted small" style="margin-top:8px">You’ll see the address and phone number once the job is yours</p>' : ''}
+  </div>`;
+}
+
+function renderTechJobs() {
+  const { oncall: oc, open, mine } = state.jobs;
+  const booked = mine.filter((j) => j.status === 'confirmed');
+  const done = mine.filter((j) => j.status === 'done');
+  $app.innerHTML = `
+    <h1>Jobs</h1>
+    <div class="card oncall ${oc.on ? 'is-on' : ''}">
+      <div class="oc-row"><div><div class="oc-t">${oc.on ? 'You’re on call' : 'You’re off call'}</div>
+        <div class="muted small">${oc.on ? 'Clients’ requests that fit your settings come here' : 'Turn on to get job requests from clients'}</div></div>
+        ${switchHtml('oc-on', oc.on, 'On call')}</div>
+      ${oc.on ? `
+        <div class="oc-set">
+          <div class="lbl">Take jobs for</div>
+          <div class="seg" data-key="takes">${[['now', 'Right now'], ['later', 'Later'], ['both', 'Both']].map(([v, l]) => `<button type="button" data-v="${v}" class="${oc.takes === v ? 'on' : ''}">${l}</button>`).join('')}</div>
+          <div class="oc-row" style="margin-top:16px"><div><div class="lbl" style="margin:0">House calls</div><div class="muted small">Go to the client’s home, hotel or office</div></div>${switchHtml('oc-house', oc.houseCalls, 'House calls')}</div>
+          ${oc.houseCalls ? `
+            <div class="lbl">How far you’ll go</div>${choice('radiusMi', oc.radiusMi, [3, 5, 10, 15, 25], (v) => `${v} mi`)}
+            <div class="lbl">Travel fee</div>${choice('travelFee', oc.travelFee, [0, 15, 25, 40], (v) => (v ? `$${v}` : 'None'))}
+            <div class="lbl">Smallest job you’ll take</div>${choice('minimum', oc.minimum, [0, 50, 75, 100], (v) => (v ? `$${v}+` : 'Any'))}` : ''}
+        </div>` : ''}
+    </div>
+    ${booked.length ? `<div class="section-label">Booked (${booked.length})</div>${booked.map(techJobCard).join('')}` : ''}
+    <div class="section-label">Requests${open.length ? ` (${open.length})` : ''}</div>
+    ${open.length ? open.map(techJobCard).join('') : `<div class="card muted" style="text-align:center">${oc.on ? 'No requests right now. New ones show up here, and your phone buzzes' : 'You’re off call, so no requests come to you'}</div>`}
+    ${done.length ? `<div class="section-label">Done</div>${done.map(techJobCard).join('')}` : ''}`;
+
+  const saveOc = async (patch) => {
+    try { state.jobs.oncall = (await api('/api/oncall', { method: 'PUT', body: patch })).oncall; await loadJobs(); renderTechJobs(); }
+    catch (err) { toast(err.message); }
+  };
+  $app.onclick = async (e) => {
+    if (e.target.closest('#oc-on')) return saveOc({ on: !oc.on });
+    if (e.target.closest('#oc-house')) return saveOc({ houseCalls: !oc.houseCalls });
+    const pick = e.target.closest('[data-key] [data-v]');
+    if (pick) { const key = pick.closest('[data-key]').dataset.key; const v = pick.dataset.v; return saveOc({ [key]: key === 'takes' ? v : Number(v) }); }
+    const b = e.target.closest('[data-job]');
+    if (b) {
+      b.disabled = true;
+      try {
+        state.jobs = await api(`/api/jobs/${b.dataset.job}/${b.dataset.act}`, { method: 'POST', body: {} });
+        updateJobsBadge();
+        toast({ accept: state.jobs.mine.some((j) => j.id === b.dataset.job && j.status === 'confirmed') ? 'It’s yours. The client’s details are below' : 'Sent. Tina will confirm who takes it', decline: 'Declined', done: 'Marked done' }[b.dataset.act]);
+      } catch (err) { toast(err.message); await loadJobs(); }
+      renderTechJobs();
+    }
+  };
+}
+
+function ownerJobCard(r) {
+  const s = state.jobs.settings;
+  const statusLine = {
+    searching: r.accepted.length && s.assign === 'owner' ? `<span class="status needs_approval">${r.accepted.length} said yes. Pick one</span>`
+      : r.waiting.length ? `<span class="status ready">Waiting on ${esc(r.waiting.join(', '))}</span>` : '<span class="status overdue">No one on call can take it</span>',
+    confirmed: `<span class="status ready">Booked with ${esc(r.techName)}</span>`,
+    done: `<span class="status posted">Done by ${esc(r.techName)}</span>`,
+    cancelled: `<span class="status posted">Cancelled by ${r.cancelledBy === 'studio' ? 'you' : 'the client'}</span>`,
+    expired: '<span class="status posted">No one took it in time</span>',
+  }[r.status] || '';
+  const open = r.status === 'searching' || r.status === 'confirmed';
+  if (!open) {
+    return `<div class="card list-item"><div class="meta"><div class="title">${esc(r.serviceName)}</div><div class="muted small" style="margin-bottom:4px">${esc(r.client.name)} · ${esc(whenLabel(r))} · ${esc(r.where.type === 'house' ? 'House call' : 'Studio')}</div>${statusLine}</div></div>`;
+  }
+  return `<div class="card job">
+    <div class="job-head"><div><div class="title">${esc(r.serviceName)}</div>${statusLine}</div><div class="pay"><b>${esc(r.priceLabel)}</b></div></div>
+    ${jobFacts({ ...r, client: r.client }, true)}
+    ${r.preferTechName ? `<p class="muted small">Asked for ${esc(r.preferTechName)}</p>` : ''}
+    ${r.declined.length ? `<p class="muted small">Declined: ${esc(r.declined.join(', '))}</p>` : ''}
+    ${r.status === 'searching' && r.accepted.length && s.assign === 'owner' ? `<div class="offers">${r.accepted.map((a) => `<div class="offer"><div><b>${esc(a.name)}</b> said yes<div class="muted small">Makes $${a.payout}</div></div><button class="btn-primary" data-job="${r.id}" data-act="assign" data-tech="${a.techId}">Give to ${esc(a.name)}</button></div>`).join('')}</div>` : ''}
+    ${r.status === 'confirmed' ? `<p class="muted small">${esc(r.techName)} makes $${r.payout}</p>` : ''}
+    <div class="row" style="margin-top:12px">
+      <button class="btn-ghost" data-job="${r.id}" data-act="cancel">Cancel request</button>
+      ${r.status === 'confirmed' ? `<button class="btn-line" data-job="${r.id}" data-act="done">Mark done</button>` : ''}
+    </div>
+  </div>`;
+}
+
+function renderOwnerJobs() {
+  const { settings: s, team, requests } = state.jobs;
+  const open = requests.filter((r) => r.status === 'searching');
+  const booked = requests.filter((r) => r.status === 'confirmed');
+  const past = requests.filter((r) => !['searching', 'confirmed'].includes(r.status)).slice(0, 12);
+  const onCall = team.filter((t) => t.on);
+  $app.innerHTML = `
+    <h1>Jobs</h1>
+    <p class="muted" style="margin:-8px 0 16px">Requests clients send from the website, and who on the team is on call</p>
+    <div class="card">
+      <div class="lbl" style="margin-top:0">Who gets a job</div>
+      <div class="seg" data-key="assign"><button type="button" data-v="first" class="${s.assign === 'first' ? 'on' : ''}">First to accept</button><button type="button" data-v="owner" class="${s.assign === 'owner' ? 'on' : ''}">I choose</button></div>
+      <p class="muted small" style="margin-top:8px">${s.assign === 'first' ? 'The first artist who says yes is booked right away' : 'Artists say yes, then you pick one. The client waits until you do'}</p>
+      <div class="lbl">Artist’s share of the service price</div>
+      ${choice('payoutPct', s.payoutPct, [50, 60, 70], (v) => `${v}%`)}
+      <p class="muted small" style="margin-top:8px">Travel fees go to the artist in full. No money moves in this demo</p>
+    </div>
+    <div class="section-label">On call now (${onCall.length} of ${team.length})</div>
+    <div class="card team">${team.map((t) => `<div class="team-row"><b>${esc(t.name)}</b><span class="status ${t.on ? 'ready' : 'posted'}">${t.on ? `On call${t.houseCalls ? ` · house calls up to ${t.radiusMi} mi` : ''}` : 'Off'}</span></div>`).join('')}</div>
+    <div class="section-label">Open requests${open.length ? ` (${open.length})` : ''}</div>
+    ${open.length ? open.map(ownerJobCard).join('') : '<div class="card muted" style="text-align:center">No open requests. They show up here the moment a client sends one</div>'}
+    ${booked.length ? `<div class="section-label">Booked (${booked.length})</div>${booked.map(ownerJobCard).join('')}` : ''}
+    ${past.length ? `<div class="section-label">Earlier</div>${past.map(ownerJobCard).join('')}` : ''}
+    <p class="small" style="text-align:center;margin-top:16px"><a href="/request" target="_blank" style="color:var(--gold-ink)">Open the request page clients use</a></p>`;
+
+  const armed = new Set();
+  $app.onclick = async (e) => {
+    const pick = e.target.closest('[data-key] [data-v]');
+    if (pick) {
+      const key = pick.closest('[data-key]').dataset.key;
+      try { await api('/api/jobs-settings', { method: 'PUT', body: { [key]: key === 'assign' ? pick.dataset.v : Number(pick.dataset.v) } }); await loadJobs(); renderOwnerJobs(); }
+      catch (err) { toast(err.message); }
+      return;
+    }
+    const b = e.target.closest('[data-job]');
+    if (!b) return;
+    // Cancelling needs a second tap, so a stray tap can't drop a client.
+    if (b.dataset.act === 'cancel' && !armed.has(b.dataset.job)) { armed.add(b.dataset.job); b.textContent = 'Tap again to cancel'; return; }
+    b.disabled = true;
+    try {
+      state.jobs = await api(`/api/jobs/${b.dataset.job}/${b.dataset.act}`, { method: 'POST', body: { techId: b.dataset.tech } });
+      updateJobsBadge();
+      toast({ assign: 'Booked. The client can see who’s coming', cancel: 'Request cancelled', done: 'Marked done' }[b.dataset.act]);
+    } catch (err) { toast(err.message); await loadJobs(); }
+    renderOwnerJobs();
+  };
+}
+
+async function renderJobs() {
+  if (!state.jobs) {
+    $app.innerHTML = '<div class="card muted" style="text-align:center"><div class="spinner"></div>Loading jobs</div>';
+    try { await loadJobs(); } catch (err) { $app.innerHTML = `<div class="card">${esc(err.message)}</div>`; return; }
+    if (!location.hash.startsWith('#/jobs')) return;
+  }
+  (isOwner() ? renderOwnerJobs : renderTechJobs)();
+}
+
+// Keep jobs fresh, and buzz when a new request arrives.
+let knownJobs = null;
+async function pollJobs() {
+  if (!state.user || document.visibilityState !== 'visible' || document.activeElement?.tagName === 'INPUT') return;
+  try {
+    const before = JSON.stringify(state.jobs);
+    await loadJobs();
+    const ids = isOwner() ? state.jobs.requests.filter((r) => r.status === 'searching').map((r) => r.id) : state.jobs.open.map((j) => j.id);
+    if (knownJobs && ids.some((id) => !knownJobs.has(id))) {
+      toast(isOwner() ? 'New request from a client' : 'New job request');
+      navigator.vibrate?.([120, 60, 120]);
+    }
+    knownJobs = new Set(ids);
+    if (location.hash.startsWith('#/jobs') && JSON.stringify(state.jobs) !== before && !$app.querySelector('button:disabled')) renderJobs();
+  } catch {}
+}
+setInterval(pollJobs, 4000);
+
 // ---------- router ----------
 function render() {
   const h = location.hash || '#/upload';
   const [, route, id] = h.split('/');
-  document.querySelectorAll('.tabs a').forEach((a) => a.classList.toggle('on', a.dataset.tab === (route === 'upload' || route === 'sent' ? 'upload' : 'posts')));
+  const tab = route === 'jobs' ? 'jobs' : route === 'posts' || route === 'post' ? 'posts' : 'upload';
+  document.querySelectorAll('.tabs a').forEach((a) => a.classList.toggle('on', a.dataset.tab === tab));
   $app.onclick = null;
   if (route !== 'post') state.view.editing = false;
   window.scrollTo(0, 0);
   if (!state.user || !state.config) return;
   if (!isOwner() && (route === 'posts' || route === 'post')) { location.hash = '#/upload'; return; }
-  if (route === 'posts') renderPosts();
+  if (route === 'jobs') renderJobs();
+  else if (route === 'posts') renderPosts();
   else if (route === 'post') renderPost(id);
   else if (route === 'sent') renderSent(id);
   else renderUpload();

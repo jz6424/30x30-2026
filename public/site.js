@@ -67,7 +67,8 @@ function home() {
         <span class="open">Open now · 24 hours</span>
         <h1>${esc(tagline)}</h1>
         <p class="lede">A nail studio in the Historic Core of Downtown LA. Walk in 9am to 8pm, or book any hour after that.</p>
-        <div class="actions"><a class="btn" ${bookAttrs()}>Book an appointment</a><a class="btn btn-line" href="#work" data-scroll="work">See the work</a></div>
+        <div class="actions"><a class="btn" ${bookAttrs()}>Book an appointment</a><a class="btn btn-line" href="/request" data-link>Request an artist</a></div>
+        <a class="oncall-line" href="/request" data-link><span class="${onCallCount() ? 'open' : 'soon'}">${onCallLine()}</span>${onCallCount() ? '<span>Get nails now, at the studio or at your place</span>' : '<span>Request a time and we’ll find you an artist</span>'}</a>
       </div>
       ${latest ? `<div class="hero-photo" data-set="${latest.id}"><img src="${latest.photos[0].url}" alt="Latest set from the studio"><div class="caption-chip"><b>${esc(latest.service || 'Latest set')}</b> · by ${esc(techOf(latest.techId)?.name || latest.tech)}</div></div>` : ''}
     </div>
@@ -92,11 +93,12 @@ function techPage(id) {
   return `
     <a class="back" href="/#artists" data-link>‹ All artists</a>
     <div class="profile">
-      <div class="top"><div class="mono big">${esc(t.name[0])}</div><div><h1>${esc(t.name)}</h1><p class="muted">Nail artist · ${esc(locOf('dtla')?.name || 'DTLA')}</p></div></div>
+      <div class="top"><div class="mono big">${esc(t.name[0])}</div><div><h1>${esc(t.name)}</h1><p class="muted">Nail artist · ${esc(locOf('dtla')?.name || 'DTLA')}</p>${(data.onCall || []).includes(t.id) ? '<span class="open" style="margin-top:4px">On call now</span>' : ''}</div></div>
       <p class="bio">${esc(t.bio)}</p>
       <div class="tags">${t.specialties.map((s) => `<span class="tag">${esc(s)}</span>`).join('')}</div>
       <div class="actions">
         <a class="btn" ${bookAttrs()}>Book with ${esc(t.name)}</a>
+        <a class="btn btn-line" href="/request?pro=${t.id}" data-link>Request ${esc(t.name)}</a>
         <a class="btn btn-line" href="${esc(t.instagram ? 'https://www.instagram.com/' + t.instagram.replace('@', '') : data.brand.instagramUrl)}" target="_blank" rel="noopener">Instagram</a>
       </div>
     </div>
@@ -185,6 +187,221 @@ function closeSet() {
   wrap.hidden = true; wrap.innerHTML = ''; document.body.style.overflow = '';
 }
 
+// ---------- on-demand requests ("Uber-style") ----------
+// A client asks for a service now or at a set time, at the studio or at their place.
+// Artists who are on call see it in /studio and accept; this page follows it live.
+const myRequests = () => { try { return JSON.parse(localStorage.getItem('requests') || '{}'); } catch { return {}; } };
+const rememberRequest = (id, token) => localStorage.setItem('requests', JSON.stringify({ ...myRequests(), [id]: token }));
+const fmtMins = (m) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} hr${m % 60 ? ` ${m % 60} min` : ''}`);
+const fmtWhen = (iso) => {
+  if (iso === 'now') return 'As soon as possible';
+  const d = new Date(iso), now = new Date();
+  const tmr = new Date(now); tmr.setDate(now.getDate() + 1);
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  if (d.toDateString() === now.toDateString()) return `Today, ${time}`;
+  if (d.toDateString() === tmr.toDateString()) return `Tomorrow, ${time}`;
+  return `${d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}, ${time}`;
+};
+const onCallCount = () => (data.onCall || []).length;
+const onCallLine = () => {
+  const n = onCallCount();
+  return n ? `${n} artist${n === 1 ? '' : 's'} on call now` : 'No one on call right now';
+};
+
+const form = { serviceId: null, option: null, when: 'now', at: '', where: 'studio', address: '', lat: null, lng: null, pro: null, name: '', phone: '', notes: '', error: '', sending: false };
+
+function requestPage() {
+  const params = new URLSearchParams(location.search);
+  if (params.get('pro') && !form.pro) form.pro = params.get('pro');
+  const svc = data.services.find((s) => s.id === form.serviceId);
+  const opt = svc?.options?.find((o) => o.id === form.option);
+  const minutes = opt?.minutes || svc?.minutes;
+  const price = opt?.price || svc?.price;
+  const groups = [...new Set(data.services.map((s) => s.group))];
+  const canDo = (t) => !form.serviceId || !t.serviceIds || t.serviceIds.includes(form.serviceId);
+  const active = Object.keys(myRequests());
+  const minAt = new Date(Date.now() + 30 * 60_000 - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+
+  return `
+    <section style="border:0;padding-bottom:16px">
+      <span class="${onCallCount() ? 'open' : 'soon'}">${onCallLine()}</span>
+      <h1 style="margin-top:12px">Request an artist</h1>
+      <p class="lede muted" style="margin-top:12px">Tell us what you’d like. Artists on call get your request right away, and you’ll see here who’s coming.</p>
+      ${active.length ? `<p class="small" style="margin-top:12px"><a href="/request/${active[active.length - 1]}" data-link>See your last request</a></p>` : ''}
+    </section>
+    <form id="req" class="req" novalidate>
+      <h3>Service</h3>
+      ${groups.map((g) => `<div class="req-group">${esc(g)}</div><div class="picklist">${data.services.filter((s) => s.group === g).map((s) => `
+        <label class="pickrow ${form.serviceId === s.id ? 'on' : ''}"><input type="radio" name="svc" value="${s.id}" ${form.serviceId === s.id ? 'checked' : ''}><span class="n">${esc(s.name)}</span><span class="p">${esc(s.price)}</span></label>`).join('')}</div>`).join('')}
+      ${svc?.options ? `<div class="chiprow" data-group="option">${svc.options.map((o) => `<button type="button" class="pill ${form.option === o.id ? 'on' : ''}" data-v="${o.id}">${esc(o.label)}${o.price ? ` · ${esc(o.price)}` : ''}</button>`).join('')}</div>` : ''}
+
+      <h3>When</h3>
+      <div class="chiprow" data-group="when"><button type="button" class="pill ${form.when === 'now' ? 'on' : ''}" data-v="now">As soon as possible</button><button type="button" class="pill ${form.when === 'later' ? 'on' : ''}" data-v="later">Pick a time</button></div>
+      ${form.when === 'later' ? `<input class="field" type="datetime-local" id="at" min="${minAt}" value="${esc(form.at)}" aria-label="Date and time">` : ''}
+
+      <h3>Where</h3>
+      <div class="chiprow" data-group="where"><button type="button" class="pill ${form.where === 'studio' ? 'on' : ''}" data-v="studio">At the studio</button><button type="button" class="pill ${form.where === 'house' ? 'on' : ''}" data-v="house">Come to me</button></div>
+      ${form.where === 'studio' ? `<p class="muted small" style="margin-top:8px">${esc(locOf('dtla')?.address || '')}</p>` : `
+        <input class="field" id="address" placeholder="Home, hotel or office address" autocomplete="street-address" value="${esc(form.address)}">
+        <button type="button" class="btn btn-line btn-small" id="locate" style="margin-top:8px">${form.lat != null ? 'Location added ✓' : 'Use my current location'}</button>
+        <p class="muted small" style="margin-top:8px">Your artist adds a travel fee, usually $15 to $40. They only see your address once they’re booked</p>`}
+
+      <h3>Artist</h3>
+      <div class="chiprow" data-group="pro"><button type="button" class="pill ${!form.pro ? 'on' : ''}" data-v="">Anyone available</button>${data.techs.map((t) => `<button type="button" class="pill ${form.pro === t.id ? 'on' : ''}" data-v="${t.id}" ${canDo(t) ? '' : 'disabled'}>${(data.onCall || []).includes(t.id) ? '<i class="live"></i>' : ''}${esc(t.name)}</button>`).join('')}</div>
+
+      <h3>Your details</h3>
+      <input class="field" id="name" placeholder="First name" autocomplete="given-name" value="${esc(form.name)}">
+      <input class="field" id="phone" type="tel" placeholder="Phone number" autocomplete="tel" value="${esc(form.phone)}">
+      <textarea class="field" id="notes" rows="2" placeholder="Anything we should know? Shape, length, a reference photo you’ll bring">${esc(form.notes)}</textarea>
+
+      <div class="summary">
+        ${svc ? `<div><span>${esc(svc.name)}${opt ? `, ${esc(opt.label.toLowerCase())}` : ''}</span><b>${esc(price)}</b></div><div class="muted small"><span>About ${fmtMins(minutes || 60)}${form.where === 'house' ? ' · plus travel fee' : ''}</span></div>` : '<div class="muted">Pick a service to see the price</div>'}
+      </div>
+      <p class="form-error" role="alert">${esc(form.error)}</p>
+      <button class="btn" id="send" style="width:100%" ${form.sending ? 'disabled' : ''}>${form.sending ? 'Sending…' : 'Send request'}</button>
+      <p class="muted small" style="margin-top:12px;text-align:center">${esc(data.onDemandNote || '')}</p>
+    </form>`;
+}
+
+function bindRequestForm() {
+  const el = document.getElementById('req');
+  if (!el) return;
+  const keep = () => { for (const k of ['name', 'phone', 'notes', 'address', 'at']) { const i = document.getElementById(k); if (i) form[k] = i.value; } };
+  const redraw = () => { keep(); const y = window.scrollY; $page.innerHTML = requestPage(); bindRequestForm(); window.scrollTo(0, y); };
+  el.addEventListener('change', (e) => {
+    if (e.target.name === 'svc') {
+      form.serviceId = e.target.value; form.option = null; form.error = '';
+      const t = data.techs.find((x) => x.id === form.pro);
+      if (t?.serviceIds && !t.serviceIds.includes(form.serviceId)) form.pro = null;
+      redraw();
+    }
+  });
+  el.addEventListener('click', (e) => {
+    const pill = e.target.closest('[data-group] [data-v]');
+    if (pill) {
+      const g = pill.closest('[data-group]').dataset.group;
+      form[g] = pill.dataset.v || null; form.error = '';
+      if (g === 'when' && form.when === 'later' && !form.at) {
+        const d = new Date(Date.now() + 2 * 3600_000); d.setMinutes(0, 0, 0);
+        form.at = new Date(d - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+      }
+      return redraw();
+    }
+    if (e.target.closest('#locate')) {
+      if (!navigator.geolocation) return toast('This browser can’t share your location. Type the address instead');
+      e.target.closest('#locate').textContent = 'Finding you…';
+      navigator.geolocation.getCurrentPosition(
+        (p) => { form.lat = Math.round(p.coords.latitude * 1e4) / 1e4; form.lng = Math.round(p.coords.longitude * 1e4) / 1e4; redraw(); },
+        () => { toast('Couldn’t get your location. Type the address instead'); redraw(); },
+        { timeout: 10000, maximumAge: 60000 },
+      );
+    }
+  });
+  el.addEventListener('submit', async (e) => {
+    e.preventDefault(); keep();
+    const svc = data.services.find((s) => s.id === form.serviceId);
+    const need = !svc ? 'Pick a service'
+      : svc.options && !form.option ? `Pick ${svc.options.map((o) => o.label.toLowerCase()).join(' or ')}`
+      : form.when === 'later' && !form.at ? 'Pick a date and time'
+      : form.where === 'house' && !form.address.trim() && form.lat == null ? 'Add the address, or use your current location'
+      : !form.name.trim() ? 'Add your first name'
+      : form.phone.replace(/\D/g, '').length < 10 ? 'Add a phone number so your artist can reach you' : '';
+    if (need) { form.error = need; return redraw(); }
+    form.sending = true; form.error = ''; redraw();
+    try {
+      const res = await fetch('/api/requests', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          serviceId: form.serviceId, option: form.option,
+          when: form.when === 'now' ? 'now' : new Date(form.at).toISOString(),
+          where: form.where === 'house' ? { type: 'house', address: form.address, lat: form.lat, lng: form.lng } : { type: 'studio', locationId: 'dtla' },
+          preferTechId: form.pro, notes: form.notes, client: { name: form.name, phone: form.phone },
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'Couldn’t send. Try again');
+      rememberRequest(json.request.id, json.token);
+      Object.assign(form, { serviceId: null, option: null, notes: '', sending: false });
+      go(`/request/${json.request.id}`);
+    } catch (err) { form.sending = false; form.error = err.message; redraw(); }
+  });
+}
+
+// ----- live status of one request -----
+let watching = null;
+function statusPage(id) {
+  const token = myRequests()[id];
+  if (!token) return `<section style="border:0"><h1>Request not found</h1><p class="muted" style="margin:12px 0 20px">Open it on the phone you sent it from, or call the studio.</p><a class="btn" href="/request" data-link>Make a new request</a></section>`;
+  return `<section style="border:0" id="rq"><div class="spinner-dot"></div></section>`;
+}
+async function watchRequest(id) {
+  const token = myRequests()[id];
+  if (!token) return;
+  clearInterval(watching);
+  let lastSig = '';
+  const tick = async () => {
+    const el = document.getElementById('rq');
+    if (!el) return clearInterval(watching);
+    try {
+      const res = await fetch(`/api/requests/${id}?t=${token}`, { cache: 'no-store' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      const sig = JSON.stringify(json.request);
+      if (sig !== lastSig) { lastSig = sig; el.innerHTML = statusHtml(json.request); }
+      if (['done', 'cancelled', 'expired'].includes(json.request.status)) clearInterval(watching);
+    } catch (err) { el.innerHTML = `<p class="muted">${esc(err.message || 'Couldn’t load your request')}</p>`; }
+  };
+  await tick();
+  watching = setInterval(() => { if (document.visibilityState === 'visible') tick(); }, 3000);
+}
+function statusHtml(r) {
+  const pro = r.pro?.name;
+  const loc = locOf(r.where.locationId || 'dtla');
+  const head = {
+    searching: r.waitingOnStudio
+      ? { cls: 'wait', t: 'An artist said yes', s: 'The studio is confirming who takes it. This usually takes a minute or two' }
+      : r.notifiedCount
+        ? { cls: 'wait', t: 'Finding your artist', s: `Sent to ${r.notifiedCount} artist${r.notifiedCount === 1 ? '' : 's'} on call. We’ll keep looking until ${new Date(r.expiresAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` }
+        : { cls: 'wait', t: 'Waiting for an artist', s: 'No one on call can take this right now. It goes to the next artist who comes on call, or call the studio' },
+    confirmed: { cls: 'ok', t: `${pro} is booked`, s: r.where.type === 'house' ? `${pro} has your address and number and will text you before heading over` : `See you at ${loc?.address || 'the studio'}. ${pro} has your number if anything changes` },
+    done: { cls: 'ok', t: 'All done', s: `Thanks for coming to Confessionail${pro ? `. ${pro} would love a tag on Instagram` : ''}` },
+    cancelled: { cls: 'off', t: 'Request cancelled', s: 'Nothing was charged' },
+    expired: { cls: 'off', t: 'No one could take it in time', s: 'Try a later time, or call the studio and we’ll fit you in' },
+  }[r.status];
+  const travel = r.where.type === 'house' ? (r.travelFee != null ? ` + $${r.travelFee} travel` : ' + travel fee') : '';
+  return `
+    <div class="rq-head ${head.cls}">${head.cls === 'wait' ? '<div class="pulse"><i></i></div>' : ''}<h1>${esc(head.t)}</h1><p class="muted">${esc(head.s)}</p></div>
+    <div class="place rq-card">
+      <div class="facts">
+        <div><span>Service</span><b>${esc(r.serviceName)}</b></div>
+        <div><span>Price</span><b>${esc(r.priceLabel)}${travel}</b></div>
+        <div><span>Takes</span><b>About ${fmtMins(r.minutes)}</b></div>
+        <div><span>When</span><b>${esc(fmtWhen(r.when))}</b></div>
+        <div><span>Where</span><b>${r.where.type === 'house' ? esc(r.where.address) : esc(loc?.address || 'The studio')}</b></div>
+        ${pro ? `<div><span>Artist</span><b><a href="/tech/${r.pro.id}" data-link>${esc(pro)}</a></b></div>` : ''}
+        ${r.notes ? `<div><span>Notes</span><b>${esc(r.notes)}</b></div>` : ''}
+      </div>
+    </div>
+    <div class="rq-actions">
+      ${r.status === 'confirmed' && r.where.type === 'studio' && loc ? `<a class="btn" href="${directions(loc)}" target="_blank" rel="noopener">Directions</a>` : ''}
+      ${['expired', 'cancelled', 'done'].includes(r.status) ? '<a class="btn" href="/request" data-link>New request</a>' : ''}
+      ${r.studioPhone ? `<a class="btn btn-line" href="tel:${r.studioPhone.replace(/\D/g, '')}">Call the studio</a>` : ''}
+      ${['searching', 'confirmed'].includes(r.status) ? `<button type="button" class="btn btn-line" data-cancel="${r.id}">Cancel request</button>` : ''}
+    </div>`;
+}
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-cancel]');
+  if (!b) return;
+  if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = 'Tap again to cancel'; return; }
+  b.disabled = true;
+  const id = b.dataset.cancel;
+  try {
+    const res = await fetch(`/api/requests/${id}/cancel`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ t: myRequests()[id] }) });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Couldn’t cancel');
+    watchRequest(id);
+  } catch (err) { toast(err.message); b.disabled = false; }
+});
+
 // ---------- router ----------
 function render() {
   const path = location.pathname.replace(/\/+$/, '') || '/';
@@ -192,6 +409,8 @@ function render() {
   if (path === '/') html = home();
   else if (path === '/locations') html = locationsPage();
   else if (path.startsWith('/tech/')) html = techPage(decodeURIComponent(path.split('/')[2]));
+  else if (path === '/request') html = requestPage();
+  else if (path.startsWith('/request/')) html = statusPage(decodeURIComponent(path.split('/')[2]));
   else html = notFound();
   $page.innerHTML = html;
   document.querySelectorAll('.nav nav a').forEach((a) => a.classList.toggle('on', a.getAttribute('href') === path));
@@ -201,13 +420,15 @@ function render() {
     <div>${esc(data.brand.address)} · Open 24 hours</div>
     <div><a href="${esc(data.brand.instagramUrl)}" target="_blank" rel="noopener">${esc(data.brand.handle)}</a> · <a href="/studio">Staff</a></div>`;
   if (path === '/locations') drawMap();
+  if (path === '/request') bindRequestForm();
+  if (path.startsWith('/request/')) watchRequest(decodeURIComponent(path.split('/')[2]));
   for (const g of data.gallery) seen.add(g.id);
 }
 
 function go(href) {
   const url = new URL(href, location.origin);
-  if (url.pathname !== location.pathname) {
-    history.pushState({}, '', url.pathname + url.hash);
+  if (url.pathname + url.search !== location.pathname + location.search) {
+    history.pushState({}, '', url.pathname + url.search + url.hash);
     closeSet(); render(); window.scrollTo(0, 0);
   }
   if (url.hash) document.getElementById(url.hash.slice(1))?.scrollIntoView({ behavior: 'smooth' });
@@ -231,18 +452,18 @@ async function load() {
 }
 (async function boot() {
   data = await load();
-  lastSig = JSON.stringify(data.gallery.map((g) => [g.id, g.photos.map((p) => p.url)]));
+  lastSig = JSON.stringify([data.onCall, data.gallery.map((g) => [g.id, g.photos.map((p) => p.url)])]);
   render();
   if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView();
   setInterval(async () => {
     if (document.visibilityState !== 'visible') return;
     try {
       const next = await load();
-      const sig = JSON.stringify(next.gallery.map((g) => [g.id, g.photos.map((p) => p.url)]));
+      const sig = JSON.stringify([next.onCall, next.gallery.map((g) => [g.id, g.photos.map((p) => p.url)])]);
       if (sig === lastSig) return;
       lastSig = sig; data = next;
       // Re-render in place; keep scroll, leave an open sheet alone.
-      if (document.getElementById('sheet').hidden) {
+      if (document.getElementById('sheet').hidden && !location.pathname.startsWith('/request')) {
         const y = window.scrollY; render(); window.scrollTo(0, y);
       }
     } catch {}
