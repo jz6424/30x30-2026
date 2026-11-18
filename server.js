@@ -310,6 +310,10 @@ const server = http.createServer(async (req, res) => {
       // ----- open to everyone -----
       if (req.method === 'GET' && url.pathname === '/api/public') return send(res, 200, publicData());
       if (req.method === 'GET' && url.pathname === '/api/staff') return send(res, 200, { staff: auth.staff });
+      // Health checks: Render pings one of these. /api/config stays answerable without a
+      // sign-in (as {ok:true}) because services created before the PIN gate still check it.
+      if (req.method === 'GET' && url.pathname === '/api/health') return send(res, 200, { ok: true });
+      if (req.method === 'GET' && url.pathname === '/api/config' && !auth.userFrom(req)) return send(res, 200, { ok: true, signIn: true });
       if (req.method === 'POST' && url.pathname === '/api/login') {
         const r = auth.login(req, await readBody(req, 10_000));
         if (r.status !== 200) return send(res, r.status, { error: r.error }, r.retryAfter ? { 'Retry-After': String(r.retryAfter) } : {});

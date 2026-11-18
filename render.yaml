@@ -6,7 +6,7 @@ services:
     plan: free
     buildCommand: npm install --no-audit --no-fund
     startCommand: node server.js
-    healthCheckPath: /api/staff
+    healthCheckPath: /api/health
     envVars:
       - key: NODE_VERSION
         value: "22"
