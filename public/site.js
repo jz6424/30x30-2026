@@ -62,8 +62,7 @@ function placeCard(l, { withGallery = false } = {}) {
 
 // ---------- pages ----------
 // ---------- the hour in Downtown LA ----------
-// The studio never closes, so the site leads with the time. 8pm to 6am it switches
-// to the night look. ?night or ?day in the address forces one for a demo.
+// The studio never closes. After 8pm the hero copy talks about late visits; ?night or ?day forces one.
 function laNow() {
   const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', minute: '2-digit', hour12: true }).formatToParts(new Date());
   const get = (t) => parts.find((p) => p.type === t)?.value || '';
@@ -78,8 +77,6 @@ function isNight() {
   return h24 >= 20 || h24 < 6;
 }
 function applyTime() {
-  document.documentElement.toggleAttribute('data-night', isNight());
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', isNight() ? '#1F161B' : '#F4ECDF');
   const el = document.getElementById('clock');
   if (!el) return;
   const t = laNow();
@@ -99,24 +96,26 @@ function home() {
   return `
     <div class="hero">
       <div class="hero-text">
-        <h1><span class="clock" id="clock" aria-label="Time in Downtown LA"><span><span class="hh">${t.h}</span><span class="colon">:</span><span class="mm">${t.m}</span></span><span class="ap">${t.ap}</span></span>
-          <span class="where">in Downtown LA, and we’re open</span></h1>
+        <h1 class="display">24 Hour Nail Salon in Downtown Los Angeles</h1>
+        <span class="rule" aria-hidden="true"></span>
+        <p class="tagline">Private luxury. Perfect nails.</p>
+        <p class="now"><span class="open">Open now</span><span class="clock" id="clock" aria-label="Time in Downtown LA"><span class="hh">${t.h}</span>:<span class="mm">${t.m}</span> <span class="ap">${t.ap}</span> in DTLA</span></p>
         <p class="lede">${esc(lateLine)}</p>
         <div class="actions"><a class="btn" href="/request" data-link>Request an artist</a><a class="btn btn-line" ${bookAttrs()}>Book ahead</a></div>
         <a class="oncall-line" href="/request" data-link><span class="${n ? 'open' : 'soon'}">${onCallLine()}</span><span>${n ? 'At the studio or at your place' : 'Request a time and we’ll find you an artist'}</span></a>
       </div>
-      ${latest ? `<div class="hero-photo" data-set="${latest.id}"><img src="${latest.photos[0].url}" alt="Latest set from the studio"><div class="caption-chip"><b>${esc(latest.service || 'Latest set')}</b><br>by ${esc(techOf(latest.techId)?.name || latest.tech)}</div></div>` : `<div class="hero-empty">The newest set from the studio shows here</div>`}
+      ${data.gallery.length ? `<div class="arches" style="--n:${Math.min(3, data.gallery.length)}">${data.gallery.slice(0, 3).map((g, i) => `<div class="arch" data-set="${g.id}"><img src="${g.photos[0].url}" alt="${esc(g.service || 'Nail set')} by ${esc(techOf(g.techId)?.name || g.tech)}"${i ? ' loading="lazy"' : ''}></div>`).join('')}</div>` : `<div class="hero-empty">The newest sets from the studio show here</div>`}
     </div>
     <section id="work">
-      <div class="head"><h2>Latest work</h2></div>
+      <div class="head"><div><p class="kicker">Our gallery</p><h2>Latest work</h2></div></div>
       ${gallery(data.gallery.slice(0, 12), 'New sets from the studio appear here as soon as they’re approved')}
     </section>
-    <section id="artists">
-      <div class="head"><h2>Nail artists</h2></div>
+    <section id="artists" class="cream">
+      <div class="head"><div><p class="kicker">Our artists</p><h2>Nail artists</h2></div></div>
       <div class="artists">${data.techs.map(artistCard).join('')}</div>
     </section>
     <section id="visit">
-      <div class="head"><h2>Visit</h2><a href="/locations" data-link>Map</a></div>
+      <div class="head"><div><p class="kicker">Come see us</p><h2>Visit</h2></div><a href="/locations" data-link>Map</a></div>
       <div class="places">${data.locations.map((l) => placeCard(l)).join('')}</div>
     </section>`;
 }
