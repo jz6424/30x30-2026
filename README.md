@@ -153,6 +153,6 @@ Direct auto-publishing through the Meta Graph API is a later upgrade. It needs a
 The app stays the system of record. A Covey agent can help with the content through `/api/agent`. It can draft captions, give a second opinion on the photo pick, spread approved posts across the calendar and read team activity. It can't approve, post, delete or see clients' details, and Tina still approves everything in `/studio`.
 
 1. In Render, set `AGENT_TOKEN` to a long random string, for example `openssl rand -hex 32`. The API stays off without it.
-2. Give Covey the same value as a secret, then paste the prompt in [`docs/converge-prompt.md`](docs/converge-prompt.md).
+2. Give Covey the same value as a secret named `CONFESSIONAIL_AGENT_TOKEN`. Then either import the skill from `https://github.com/jz6424/30x30-2026/tree/main/skills/confessionail-set-to-post`, or paste the prompt in [`docs/converge-prompt.md`](docs/converge-prompt.md).
 3. Calls send `Authorization: Bearer <AGENT_TOKEN>`. `GET /api/agent` lists the endpoints.
 
