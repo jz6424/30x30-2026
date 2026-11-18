@@ -31,6 +31,7 @@ function modal(html) {
   m.innerHTML = `<div class="sheet">${html}</div>`; m.hidden = false;
   return m;
 }
+const isPhone = () => /iphone|ipad|ipod|android/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /macintosh/i.test(navigator.userAgent));
 const service = (id) => state.config?.brand.services.find((s) => s.id === id);
 const photo = (post, id) => post.photos.find((p) => p.id === id);
 const isOverdue = (p) => p.status === 'ready' && p.scheduledFor && new Date(p.scheduledFor) < new Date();
@@ -130,7 +131,13 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && state.awaitingConfirm) setTimeout(askPosted, 300);
 });
 async function savePhotos(post) {
-  const files = state.filesCache[post.id]?.files || (await prefetchFiles(post));
+  const cached = state.filesCache[post.id]?.files;
+  // On phones the share sheet has "Save Images", which puts them in the camera roll.
+  if (isPhone() && cached && canShareFiles(cached)) {
+    navigator.share({ files: cached }).catch(() => {});
+    return toast('Tap “Save Images” to put them in your photos.', 4500);
+  }
+  const files = cached || (await prefetchFiles(post));
   for (const [i, f] of files.entries()) {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(f); a.download = f.name;
@@ -169,9 +176,12 @@ function renderUpload() {
     </div>
 
     <div class="section-label">Photos</div>
-    <label class="dropzone" for="file">
-      <div><div class="big">＋ Add photos</div><div class="muted small">5 to 20 photos of the same set</div></div>
-    </label>
+    <div class="row">
+      <label class="dropzone" for="cam"><div><div class="big">📷</div><b>Take photo</b></div></label>
+      <label class="dropzone" for="file"><div><div class="big">🖼️</div><b>Choose photos</b></div></label>
+    </div>
+    <p class="muted small" style="margin-top:8px">5 to 20 photos of the same set. Nails close up, on marble or white fur if you can.</p>
+    <input id="cam" type="file" accept="image/*" capture="environment" hidden>
     <input id="file" type="file" accept="image/*" multiple hidden>
     ${u.analyzing ? `<p class="muted small" style="margin-top:10px">Checking ${u.analyzing} photo${u.analyzing > 1 ? 's' : ''} for blur, glare and lighting…</p>` : ''}
     ${u.results.length ? `<p class="small" style="margin:12px 0 8px"><b>${kept.length}</b> good to use · ${u.results.length - kept.length} skipped</p><div class="grid">${tiles}</div>
@@ -188,6 +198,7 @@ function renderUpload() {
     u.serviceId = b.dataset.id; renderUpload();
   };
   document.getElementById('file').onchange = (e) => addFiles([...e.target.files]);
+  document.getElementById('cam').onchange = (e) => addFiles([...e.target.files]);
   document.getElementById('clear')?.addEventListener('click', () => { u.results = []; renderUpload(); });
   document.getElementById('go').onclick = sendSet;
 }
@@ -210,18 +221,36 @@ async function addFiles(files) {
   }
 }
 
+function uploadWithProgress(url, body) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    const msg = () => document.getElementById('up-msg');
+    xhr.upload.onprogress = (e) => {
+      if (!e.lengthComputable || !msg()) return;
+      const pct = Math.round((e.loaded / e.total) * 100);
+      msg().textContent = pct < 100 ? `Uploading photos… ${pct}%` : 'Checking framing, background and house style, then writing captions.';
+    };
+    xhr.onload = () => {
+      let json = {}; try { json = JSON.parse(xhr.responseText); } catch {}
+      xhr.status < 300 ? resolve(json) : reject(new Error(json.error || 'Upload failed. Check your connection and try again.'));
+    };
+    xhr.onerror = () => reject(new Error('Upload failed. Check your connection and try again.'));
+    xhr.send(JSON.stringify(body));
+  });
+}
+
 async function sendSet() {
   const u = state.upload;
   u.sending = true;
-  modal(`<div style="text-align:center"><div class="spinner"></div><h2>Picking the best shots</h2><p class="muted">Checking framing, background and house style, then writing captions.</p></div>`);
+  modal(`<div style="text-align:center"><div class="spinner"></div><h2>Picking the best shots</h2><p class="muted" id="up-msg">Uploading photos…</p></div>`);
   try {
     const started = Date.now();
-    const { post } = await api('/api/sets', {
-      method: 'POST',
-      body: {
+    const { post } = await uploadWithProgress('/api/sets', {
         tech: u.tech, serviceId: u.serviceId,
-        photos: u.results.map(({ id, name, dataUrl, width, height, checks, features, pixelReason, dropped, duplicateOf }) => ({ id, name, dataUrl, width, height, checks, features, pixelReason, dropped, duplicateOf })),
-      },
+        // Skipped photos go up as small thumbnails to save phone data.
+        photos: u.results.map(({ id, name, dataUrl, thumbUrl, width, height, checks, features, pixelReason, dropped, duplicateOf }) => ({ id, name, dataUrl: dropped || duplicateOf ? thumbUrl : dataUrl, width, height, checks, features, pixelReason, dropped, duplicateOf })),
     });
     console.info(`Set processed in ${((Date.now() - started) / 1000).toFixed(1)}s`);
     setPost(post);
@@ -346,28 +375,28 @@ function renderPost(id) {
     </div>
     <p class="muted small">by ${esc(post.tech)} · ${post.photos.length} photos uploaded</p>
 
-    ${hero ? `<div class="hero"><img src="${hero.url}" alt="Hero photo"><div class="why"><span class="score">★ ${hero.score}</span>${esc(hero.reason)}</div></div>
+    ${hero ? `<div class="hero"><img src="${hero.url}" alt="Hero photo" data-view="${hero.url}"><div class="why"><span class="score">★ ${hero.score}</span>${esc(hero.reason)}</div></div>
       <details><summary>Why this one?</summary>${checkRows(hero)}</details>` : '<div class="card">No usable photos in this set.</div>'}
     ${post.retakeTip ? `<div class="tip" style="margin-top:10px"><b>These are a bit weak.</b> Tip for the team: ${esc(post.retakeTip)}</div>` : ''}
 
     <div class="section-label">Carousel · swipe order</div>
     <div class="strip">
       ${post.carouselIds.map((pid, i) => { const p = photo(post, pid); return `<div class="pick">
-        <div class="tile"><img src="${p.url}" alt=""><span class="num">${i + 2}</span></div>
+        <div class="tile"><img src="${p.url}" alt="" data-view="${p.url}"><span class="num">${i + 2}</span></div>
         <div class="reason"><span class="score">${p.score}</span>${esc(p.reason)}</div>
         <div class="acts"><button class="btn-ghost" data-hero="${p.id}">★ Hero</button><button class="btn-line" data-remove="${p.id}">Remove</button></div>
       </div>`; }).join('') || '<p class="muted small">Just the hero photo.</p>'}
     </div>
 
     ${others.length ? `<details><summary>Other photos (${others.length})</summary><div class="strip" style="margin-top:8px">
-      ${others.map((p) => `<div class="pick"><div class="tile ${usable(p) ? '' : 'out'}"><img src="${p.url}" alt=""></div>
+      ${others.map((p) => `<div class="pick"><div class="tile ${usable(p) ? '' : 'out'}"><img src="${p.url}" alt="" data-view="${p.url}"></div>
         <div class="reason">${p.score != null && usable(p) ? `<span class="score">${p.score}</span>` : ''}${esc(p.reason || '')}</div>
         <div class="acts"><button class="btn-ghost" data-add="${p.id}">Add</button><button class="btn-line" data-hero="${p.id}">★ Hero</button></div></div>`).join('')}
     </div></details>` : ''}
 
     <div class="section-label">Caption</div>
     <div class="card">
-      <div class="seg" id="opts">${post.captions.options.map((o) => `<button data-k="${o.key}" class="${o.key === post.chosen ? 'on' : ''}">${o.key} · ${esc(o.label)}</button>`).join('')}</div>
+      <div class="seg" id="opts">${post.captions.options.map((o) => `<button data-k="${o.key}" class="opt ${o.key === post.chosen ? 'on' : ''}"><b>${o.key}</b><small>${esc(o.label)}</small></button>`).join('')}</div>
       <div class="seg" id="chan" style="margin-top:8px"><button data-c="ig" class="${ch === 'ig' ? 'on' : ''}">Instagram</button><button data-c="fb" class="${ch === 'fb' ? 'on' : ''}">Facebook</button></div>
       ${state.view.editing
         ? `<textarea id="cap-edit" style="margin-top:12px">${esc(text)}</textarea><div class="row" style="margin-top:8px"><button class="btn-ghost" data-act="cancel-edit">Cancel</button><button class="btn-primary" data-act="save-edit">Save</button></div>`
@@ -385,6 +414,8 @@ function renderPost(id) {
     <div class="bar"><div class="inner">${actionBar}</div></div>`;
 
   $app.onclick = async (e) => {
+    const v = e.target.closest('[data-view]');
+    if (v) return viewPhoto(v.dataset.view);
     const b = e.target.closest('button'); if (!b) return;
     const d = b.dataset;
     try {
@@ -442,6 +473,13 @@ function renderPost(id) {
   }
 }
 
+function viewPhoto(url) {
+  const m = document.getElementById('modal');
+  m.innerHTML = `<img class="viewer" src="${url}" alt=""><button class="viewer-close" aria-label="Close">✕</button>`;
+  m.classList.add('dark'); m.hidden = false;
+  m.onclick = () => { m.hidden = true; m.classList.remove('dark'); m.innerHTML = ''; };
+}
+
 function nextSlotLabel() {
   // Preview only; the server assigns the real slot on approve.
   const taken = new Set(state.posts.filter((p) => p.scheduledFor).map((p) => new Date(p.scheduledFor).toDateString()));
@@ -462,11 +500,20 @@ function render() {
   $app.onclick = null;
   if (route !== 'post') state.view.editing = false;
   window.scrollTo(0, 0);
-  if (route === 'posts') return renderPosts();
-  if (route === 'post') return renderPost(id);
-  if (route === 'sent') return renderSent(id);
-  return renderUpload();
+  if (route === 'posts') renderPosts();
+  else if (route === 'post') renderPost(id);
+  else if (route === 'sent') renderSent(id);
+  else renderUpload();
+  fitBar();
 }
+// Keep content clear of the fixed action bar, whatever its height.
+function fitBar() {
+  requestAnimationFrame(() => {
+    const bar = document.querySelector('.bar');
+    document.body.style.paddingBottom = `${(bar ? bar.offsetHeight : 0) + 24}px`;
+  });
+}
+new MutationObserver(fitBar).observe($app, { childList: true });
 let lastRoute = '';
 window.addEventListener('hashchange', () => {
   const r = location.hash.split('/').slice(0, 3).join('/');
@@ -480,7 +527,17 @@ window.addEventListener('hashchange', () => {
 function setupHint() {
   const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
   const mobile = /iphone|ipad|android/i.test(navigator.userAgent);
-  if (standalone || !mobile || localStorage.getItem('a2hs-seen')) return;
+  if (!mobile && !standalone) {
+    const el = document.getElementById('a2hs');
+    const url = state.config.phoneUrl;
+    el.querySelector('span').innerHTML = url
+      ? `📱 Built for phones. Open <b>${esc(url)}</b> on your phone (QR code is in the terminal).`
+      : '📱 Built for phones. Run <b>npm run phone</b> to get a link that works on your phone.';
+    el.hidden = false;
+    document.getElementById('a2hs-close').onclick = () => (el.hidden = true);
+    return;
+  }
+  if (standalone || localStorage.getItem('a2hs-seen')) return;
   const el = document.getElementById('a2hs');
   if (/android/i.test(navigator.userAgent)) el.querySelector('span').innerHTML = 'Tip: tap <b>⋮</b> then <b>Add to Home screen</b> to open this like an app.';
   el.hidden = false;
@@ -489,6 +546,7 @@ function setupHint() {
 
 // ---------- boot ----------
 (async function boot() {
+  if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('/sw.js').catch(() => {});
   state.config = await api('/api/config');
   state.posts = (await api('/api/posts')).posts;
   updateBadge();

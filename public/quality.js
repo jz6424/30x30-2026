@@ -161,7 +161,7 @@ export async function analyzeFile(file, id) {
 
   // Upload copy: resized only.
   const up = draw(bitmap, UPLOAD_SIZE);
-  const dataUrl = up.canvas.toDataURL('image/jpeg', 0.9);
+  const dataUrl = up.canvas.toDataURL('image/jpeg', 0.86);
   const thumbUrl = draw(bitmap, 360).canvas.toDataURL('image/jpeg', 0.8);
 
   const hash = dHash(bitmap);

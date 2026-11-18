@@ -180,7 +180,9 @@ const server = http.createServer(async (req, res) => {
     if (parts[0] === 'api') {
       if (req.method === 'GET' && url.pathname === '/api/config') {
         const vp = await pickVisionProvider();
-        return send(res, 200, { brand, visionProvider: vp.label, live: vp.name === 'claude' });
+        let phoneUrl = null;
+        try { phoneUrl = fs.readFileSync(path.join(DATA, 'phone-url.txt'), 'utf8').trim(); } catch {}
+        return send(res, 200, { brand, visionProvider: vp.label, live: vp.name === 'claude', phoneUrl });
       }
       if (req.method === 'GET' && url.pathname === '/api/posts') return send(res, 200, { posts: db.posts });
       if (req.method === 'POST' && url.pathname === '/api/sets') {
@@ -260,6 +262,6 @@ server.listen(PORT, '0.0.0.0', async () => {
   const lan = Object.values(os.networkInterfaces()).flat().find((i) => i && i.family === 'IPv4' && !i.internal)?.address;
   console.log(`\n  Set → Post for ${brand.name}`);
   console.log(`  Open on this computer:  http://localhost:${PORT}`);
-  if (lan) console.log(`  Open on a phone (same Wi-Fi): http://${lan}:${PORT}  (share sheet + clipboard need HTTPS, see README)`);
+  if (lan) console.log(`  Open on a phone (same Wi-Fi): http://${lan}:${PORT}  (no share sheet over plain http: use npm run phone)`);
   console.log(`  Photo picker: ${vp.label}\n`);
 });

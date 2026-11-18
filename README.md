@@ -4,13 +4,19 @@ A phone-first hub for Confessionail Studio (24-hour nail salon, DTLA). Nail tech
 
 Built for Converge.AI at Stanford, Nov 20 2026.
 
-## Run it
+## Run it on a phone (main way to use it)
 
 ```bash
-node server.js          # or: npm start
+npm run phone
 ```
 
-Open http://localhost:3000. Node 18+ only, no install needed. Without an API key it runs fully offline with a built-in photo picker and caption templates.
+This starts the app and prints an HTTPS link plus a QR code. Scan it with the phone camera, then Add to Home Screen so it opens like an app. HTTPS matters: the share sheet with photos and the clipboard don't work over plain http.
+
+The link comes from a free Cloudflare quick tunnel if `cloudflared` is installed (`brew install cloudflared`, recommended), otherwise from localtunnel via npx (it asks for a one-time password, which is your computer's public IP). The link changes each run; for a fixed link, deploy the app to any Node host.
+
+Desktop only: `node server.js` (or `npm start`) and open http://localhost:3000.
+
+Node 18+ only, no install needed. Without an API key it runs fully offline with a built-in photo picker and caption templates.
 
 For live Claude scoring and captions:
 
@@ -51,7 +57,8 @@ The vision step is pluggable (`lib/vision.js`). Providers: `claude` (used when `
 - `lib/brand.json`: brand profile (services, prices, voice, hashtags, house style). Every step reads this.
 - `lib/vision.js`: vision provider interface + Claude and offline providers.
 - `lib/captions.js`: caption drafting with Claude, or templates in the studio voice.
-- `public/`: the app (no framework, no build step), manifest and icons for Add to Home Screen.
+- `public/`: the app (no framework, no build step), manifest, icons and service worker for Add to Home Screen.
+- `scripts/phone.js`: `npm run phone`, the app plus an HTTPS tunnel and QR code.
 
 ## Assumptions
 
@@ -59,9 +66,14 @@ The vision step is pluggable (`lib/vision.js`). Providers: `claude` (used when `
 - Booking link is a placeholder: `{{BOOKING_URL}}` in `lib/brand.json`.
 - Metrics logged: seconds from upload to approved, taps per post, posts planned vs. posted.
 
-## Testing on a phone
+## Phone details
 
-The share sheet with files and the clipboard need HTTPS (localhost counts, a LAN IP does not). To test on a phone, put the server behind an HTTPS tunnel, for example `npx localtunnel --port 3000` or `cloudflared tunnel --url http://localhost:3000`, and open that URL. iPhone Safari 15+ and Android Chrome support sharing multiple photos. Test the Share button on a real iPhone and Android early: it is the riskiest step.
+- Techs can **Take photo** with the camera or **Choose photos** from the library.
+- Photos are checked and resized on the phone; skipped photos upload as small thumbnails to save data. The upload shows progress.
+- **Save photos** opens the share sheet on phones ("Save Images" puts them in the camera roll); on a computer it downloads them.
+- Tap any photo to see it full screen.
+- Installable: web app manifest, icons, and a service worker so the app shell opens even on a weak signal.
+- iPhone Safari 15+ and Android Chrome support sharing several photos at once. Test the Share button on a real iPhone and Android early: it is the riskiest step.
 
 ## Upgrade path
 

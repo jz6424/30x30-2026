@@ -5,9 +5,12 @@
   "description": "Confessionail Studio: nail set photos to approved Instagram posts",
   "type": "module",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "phone": "node scripts/phone.js"
   },
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "optionalDependencies": {
     "@anthropic-ai/sdk": "*"
   }
