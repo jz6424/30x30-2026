@@ -109,7 +109,7 @@ async function buildPost({ tech, serviceId, photos }) {
       s.reason = words.slice(0, 12).join(' ').replace(/,$/, '');
     } else {
       s.score = s.dropped ? Math.round((s.checks.sharpness + s.checks.glare + s.checks.exposure) / 6) : null;
-      s.reason = s.dropped ? s.dropped : s.duplicateOf ? `Near-copy of ${s.duplicateOf}, kept the better one` : '';
+      s.reason = s.dropped ? s.dropped : s.duplicateOf ? "Near copy of a better photo, skipped" : '';
     }
   }
 

@@ -4,19 +4,19 @@ A phone-first hub for Confessionail Studio (24-hour nail salon, DTLA). Nail tech
 
 Built for Converge.AI at Stanford, Nov 20 2026.
 
-## Run it on a phone (main way to use it)
+## Run it on a phone
 
 ```bash
 npm run phone
 ```
 
-This starts the app and prints an HTTPS link plus a QR code. Scan it with the phone camera, then Add to Home Screen so it opens like an app. HTTPS matters: the share sheet with photos and the clipboard don't work over plain http.
+This starts the app and prints an HTTPS link and a QR code. Scan the code with the phone camera, then use Add to Home Screen so it opens like an app. The share sheet with photos and the clipboard only work over HTTPS.
 
-The link comes from a free Cloudflare quick tunnel if `cloudflared` is installed (`brew install cloudflared`, recommended), otherwise from localtunnel via npx (it asks for a one-time password, which is your computer's public IP). The link changes each run; for a fixed link, deploy the app to any Node host.
+The link comes from a free Cloudflare quick tunnel if `cloudflared` is installed (`brew install cloudflared`, recommended), otherwise from localtunnel via npx (it asks for a one-time password, which is your computer's public IP). The link changes on every run. For a fixed link, deploy the app to any Node host.
 
-Desktop only: `node server.js` (or `npm start`) and open http://localhost:3000.
+On a computer: `node server.js` (or `npm start`), then open http://localhost:3000.
 
-Node 18+ only, no install needed. Without an API key it runs fully offline with a built-in photo picker and caption templates.
+Needs Node 18 or later and nothing else. Without an API key it runs fully offline with a built-in photo picker and caption templates.
 
 For live Claude scoring and captions:
 
@@ -27,11 +27,11 @@ ANTHROPIC_API_KEY=sk-ant-... npm start
 
 ## The flow
 
-1. **Upload** (nail tech): name, tap the service, add 5 to 20 photos. Each photo is checked in the browser right away.
+1. **Upload** (nail tech): enter a name, tap the service, add 5 to 20 photos. The phone checks each photo as it is added.
 2. **Pick**: the server sends the photos that passed to the vision model, scores them, and builds the post: hero first, then up to 4 more, with a detail close-up second.
 3. **Caption**: three options (A Short & playful, B Detail with service and price, C 24-hour hook), each with an Instagram and a Facebook version. Buttons: Edit, Shorter, More playful, New options.
-4. **Approve** (Tina): swap the hero, remove or add photos, pick a caption, Approve (or Approve all). Approved posts are spread out one a day.
-5. **Share to Instagram**: one tap copies the caption and opens the phone's share sheet with the photos attached. Pick Instagram, long-press to paste. When she comes back the app asks "Did you post it?". Fallbacks: Save photos, Copy caption, Share to Facebook.
+4. **Approve** (Tina): choose the first photo, remove or add photos, pick a caption, then Approve or Approve all. Approved posts are spread out, one a day.
+5. **Share to Instagram**: one tap copies the caption and opens the phone's share sheet with the photos attached. She picks Instagram and long-presses to paste. When she comes back, the app asks "Did you post it?" Fallbacks: Save photos, Copy caption, Share to Facebook.
 
 Statuses: Needs approval → Ready to post (with date, or Overdue) → Posted.
 
@@ -53,16 +53,16 @@ The vision step is pluggable (`lib/vision.js`). Providers: `claude` (used when `
 
 ## Files
 
-- `server.js`: tiny HTTP server, JSON storage in `data/`, scheduling, API.
+- `server.js`: HTTP server, JSON storage in `data/`, scheduling, API.
 - `lib/brand.json`: brand profile (services, prices, voice, hashtags, house style). Every step reads this.
-- `lib/vision.js`: vision provider interface + Claude and offline providers.
+- `lib/vision.js`: vision provider interface, with Claude and offline providers.
 - `lib/captions.js`: caption drafting with Claude, or templates in the studio voice.
 - `public/`: the app (no framework, no build step), manifest, icons and service worker for Add to Home Screen.
 - `scripts/phone.js`: `npm run phone`, the app plus an HTTPS tunnel and QR code.
 
 ## Assumptions
 
-- Posting times: one post a day, 12pm Mon–Thu, 7pm Fri–Sun. A guess, easy to change in `server.js` (`slotFor`).
+- Posting times: one post a day, 12 PM Mon–Thu and 7 PM Fri–Sun. This is a guess; change it in `server.js` (`slotFor`).
 - Booking link is a placeholder: `{{BOOKING_URL}}` in `lib/brand.json`.
 - Metrics logged: seconds from upload to approved, taps per post, posts planned vs. posted.
 
