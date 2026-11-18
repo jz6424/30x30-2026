@@ -262,7 +262,7 @@ function uploadPhoto(dataUrl, onProgress) {
 async function sendSet() {
   const u = state.upload;
   u.sending = true;
-  modal(`<div style="text-align:center"><div class="spinner"></div><h2>Picking the best shots</h2><p class="muted" id="up-msg">Uploading photos…</p></div>`);
+  modal(`<div style="text-align:center"><div class="spinner"></div><h2>Sending to Tina</h2><p class="muted" id="up-msg">Uploading photos…</p></div>`);
   try {
     const started = Date.now();
     const msg = (t) => { const el = document.getElementById('up-msg'); if (el) el.textContent = t; };
@@ -272,7 +272,7 @@ async function sendSet() {
       // Skipped photos go up as small thumbnails to save phone data.
       r.uploadId = await uploadPhoto(r.dropped || r.duplicateOf ? r.thumbUrl : r.dataUrl, (f) => msg(`Uploading photo ${i + 1} of ${total}… ${Math.round(f * 100)}%`));
     }
-    msg('Checking framing, background and house style, then writing captions');
+    msg('Saving the set');
     const { post } = await api('/api/sets', { method: 'POST', body: {
         tech: u.tech, serviceId: u.serviceId,
         photos: u.results.map(({ id, name, uploadId, width, height, checks, features, pixelReason, dropped, duplicateOf }) => ({ id, name, uploadId, width, height, checks, features, pixelReason, dropped, duplicateOf })),
@@ -293,12 +293,11 @@ async function sendSet() {
 function renderSent(id) {
   const post = state.posts.find((p) => p.id === id);
   if (!post) return (location.hash = '#/upload');
-  const picks = orderedPhotos(post);
+  const usable = post.photos.filter((p) => !p.dropped && !p.duplicateOf);
   $app.innerHTML = `
     <h1>Sent to Tina</h1>
-    <p class="muted">She reviews it and posts it. These are the picks from your ${post.photos.length} photos, in post order.</p>
-    <div class="grid">${picks.map((p, i) => `<div class="tile"><img src="${p.url}" alt=""><span class="num ${i ? '' : 'first'}">${i + 1}</span><span class="tag">${esc(p.reason)}</span></div>`).join('')}</div>
-    ${post.retakeTip ? `<div class="tip" style="margin-top:16px"><b>Tip for next time:</b> ${esc(post.retakeTip)}</div>` : ''}
+    <p class="muted">${post.photos.length} photos saved, ${usable.length} good to use. The app picks the best shots and writes the caption on its own, so you can close this screen</p>
+    <div class="grid">${usable.map((p) => `<div class="tile"><img src="${p.url}" alt=""></div>`).join('')}</div>
     <div class="bar"><div class="inner row">
       <a class="btn btn-ghost" href="#/post/${post.id}">Open Tina’s view</a>
       <a class="btn btn-primary" href="#/upload">Upload another set</a>
@@ -315,9 +314,11 @@ function renderPosts() {
   if (tab === 'posted') list = list.sort((a, b) => new Date(b.postedAt) - new Date(a.postedAt));
 
   const item = (p) => {
-    const hero = photo(p, p.heroId);
+    const hero = photo(p, p.heroId) || p.photos.find((x) => !x.dropped && !x.duplicateOf) || p.photos[0];
     const s = service(p.serviceId);
-    const status = isOverdue(p) ? `<span class="status overdue">Overdue, ${fmtSlot(p.scheduledFor)}</span>`
+    const status = p.stage === 'failed' ? `<span class="status overdue">Couldn’t get ready, tap to retry</span>`
+      : p.stage ? `<span class="status posted">Getting ready</span>`
+      : isOverdue(p) ? `<span class="status overdue">Overdue, ${fmtSlot(p.scheduledFor)}</span>`
       : p.status === 'ready' ? `<span class="status ready">${fmtSlot(p.scheduledFor)}</span>`
       : p.status === 'posted' ? `<span class="status posted">Posted ${new Date(p.postedAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>`
       : `<span class="status needs_approval">Needs approval</span>`;
@@ -343,7 +344,7 @@ function renderPosts() {
       <button data-t="ready" class="${tab === 'ready' ? 'on' : ''}">Up next (${by('ready').length})</button>
       <button data-t="posted" class="${tab === 'posted' ? 'on' : ''}">Posted (${by('posted').length})</button>
     </div>
-    ${tab === 'needs_approval' && list.length > 1 ? `<button class="btn-gold" id="approve-all" style="margin-bottom:16px">Approve all ${list.length}</button>` : ''}
+    ${tab === 'needs_approval' && list.filter((p) => !p.stage).length > 1 ? `<button class="btn-gold" id="approve-all" style="margin-bottom:16px">Approve all ${list.filter((p) => !p.stage).length}</button>` : ''}
     ${tab === 'ready' && list.length ? `<p class="muted small">One post a day, 12 PM Mon–Thu and 7 PM Fri–Sun. These times are a guess, not data</p>` : ''}
     ${list.length ? list.map(item).join('') : `<div class="card muted" style="text-align:center">${{ needs_approval: 'Nothing to review. New sets from the team land here', ready: 'No approved posts yet', posted: 'Nothing posted yet' }[tab]}</div>`}
     <div class="section-label">So far</div>
@@ -368,6 +369,7 @@ function renderPosts() {
 function renderPost(id) {
   const post = state.posts.find((p) => p.id === id);
   if (!post) return (location.hash = '#/posts');
+  if (post.stage) return renderPreparing(post);
   prefetchFiles(post).catch(() => {});
   const s = service(post.serviceId);
   const hero = photo(post, post.heroId);
@@ -499,6 +501,40 @@ function renderPost(id) {
   }
 }
 
+// Shown while the server picks photos and writes captions.
+function renderPreparing(post) {
+  const s = service(post.serviceId);
+  const usable = post.photos.filter((p) => !p.dropped && !p.duplicateOf);
+  const failed = post.stage === 'failed';
+  $app.innerHTML = `
+    <a href="#/posts" class="back">${icon('left')}All posts</a>
+    <h1 style="margin:8px 0">${esc(s?.name || 'Nail set')}</h1>
+    <p class="muted small">by ${esc(post.tech)} · ${post.photos.length} photos uploaded</p>
+    <div class="card" style="text-align:center">
+      ${failed
+        ? `<h2>This set didn’t finish</h2><p class="muted small">${esc(post.stageError || 'Something went wrong')}</p><button class="btn-primary" data-act="retry">Try again</button>`
+        : `<div class="spinner"></div><h2>${post.stage === 'captions' ? 'Writing captions' : 'Picking the best shots'}</h2><p class="muted small" style="margin:0">This page updates on its own</p>`}
+    </div>
+    <div class="grid">${usable.map((p) => `<div class="tile"><img src="${p.url}" alt="" data-view="${p.url}"></div>`).join('')}</div>
+    <div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="link" data-act="delete" style="color:var(--bad)">Delete set</button></div>`;
+  $app.onclick = async (e) => {
+    const v = e.target.closest('[data-view]');
+    if (v) return viewPhoto(v.dataset.view);
+    const a = e.target.closest('[data-act]')?.dataset.act;
+    if (a === 'retry') {
+      const { post: p } = await api(`/api/posts/${post.id}/retry`, { method: 'POST' });
+      p.stage = p.stage === 'failed' ? 'picking' : p.stage; setPost(p); renderPost(post.id);
+    } else if (a === 'delete') {
+      const m = modal(`<h2>Delete this set?</h2><p class="muted">This removes its photos from the app</p><div class="row"><button class="btn-ghost" data-a="no">Keep</button><button class="btn-primary" data-a="yes" style="background:var(--bad)">Delete</button></div>`);
+      m.onclick = async (ev) => {
+        const x = ev.target.closest('[data-a]')?.dataset.a; if (!x) return;
+        modal(null);
+        if (x === 'yes') { await api(`/api/posts/${post.id}`, { method: 'DELETE' }); state.posts = state.posts.filter((p) => p.id !== post.id); updateBadge(); location.hash = '#/posts'; }
+      };
+    }
+  };
+}
+
 function viewPhoto(url) {
   const m = document.getElementById('modal');
   m.innerHTML = `<img class="viewer" src="${url}" alt=""><button class="viewer-close" aria-label="Close">${icon('x')}</button>`;
@@ -579,11 +615,25 @@ function setupHint() {
   setupHint();
   render();
   // Keep the owner view fresh when sets arrive from the team.
-  setInterval(async () => {
-    if (!location.hash.startsWith('#/posts') || document.visibilityState !== 'visible') return;
-    const { posts } = await api('/api/posts');
-    if (JSON.stringify(posts.map((p) => p.id + p.status)) !== JSON.stringify(state.posts.map((p) => p.id + p.status))) {
-      state.posts = posts; updateBadge(); renderPosts();
-    }
-  }, 8000);
+  // Refresh while Tina is looking: new sets arrive, and sets finish getting ready.
+  const sig = (list) => JSON.stringify(list.map((p) => [p.id, p.status, p.stage]));
+  let busy = false;
+  const poll = async () => {
+    const onPosts = location.hash.startsWith('#/posts');
+    const openId = location.hash.startsWith('#/post/') ? location.hash.split('/')[2] : null;
+    const open = openId && state.posts.find((p) => p.id === openId);
+    if (busy || document.visibilityState !== 'visible' || !(onPosts || open?.stage)) return;
+    busy = true;
+    try {
+      const { posts } = await api('/api/posts');
+      if (sig(posts) !== sig(state.posts)) {
+        state.posts = posts; updateBadge();
+        if (onPosts) renderPosts(); else if (open) renderPost(openId);
+      }
+    } catch {} finally { busy = false; }
+  };
+  setInterval(() => {
+    const preparing = state.posts.some((p) => p.stage && p.stage !== 'failed');
+    if (preparing || Date.now() % 9000 < 3000) poll();
+  }, 3000);
 })();

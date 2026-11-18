@@ -30,12 +30,13 @@ ANTHROPIC_API_KEY=sk-ant-... npm start
 ## The flow
 
 1. **Upload** (nail tech): enter a name, tap the service, add 5 to 20 photos. The phone checks each photo as it is added.
-2. **Pick**: the server sends the photos that passed to the vision model, scores them, and builds the post: hero first, then up to 4 more, with a detail close-up second.
-3. **Caption**: three options (A Short & playful, B Detail with service and price, C 24-hour hook), each with an Instagram and a Facebook version. Buttons: Edit, Shorter, More playful, New options.
+   The upload finishes as soon as the photos are saved. The tech can close the app; everything after this runs on the server.
+2. **Pick** (server, in the background): the photos that passed go to the vision model, get scored, and become the post: the best photo first, then up to 4 more, with a detail close-up second.
+3. **Caption** (server, in the background, right after picking): three options (A Short & playful, B Detail with service and price, C 24-hour hook), each with an Instagram and a Facebook version. Buttons: Edit, Shorter, More playful, New options.
 4. **Approve** (Tina): choose the first photo, remove or add photos, pick a caption, then Approve or Approve all. Approved posts are spread out, one a day.
 5. **Share to Instagram**: one tap copies the caption and opens the phone's share sheet with the photos attached. She picks Instagram and long-presses to paste. When she comes back, the app asks "Did you post it?" Fallbacks: Save photos, Copy caption, Share to Facebook.
 
-Statuses: Needs approval → Ready to post (with date, or Overdue) → Posted.
+Statuses: Needs approval → Ready to post (with date, or Overdue) → Posted. While the server is still picking or writing, Tina sees the set as "Getting ready" and the page fills in on its own. If a step fails, she gets a Try again button. Unfinished sets resume when the server restarts.
 
 ## How photos are scored (hybrid)
 

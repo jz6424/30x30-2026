@@ -101,49 +101,25 @@ async function buildPost({ tech, serviceId, photos }) {
   const byClient = Object.fromEntries(stored.map((s) => [s.clientId, s.id]));
   for (const s of stored) s.duplicateOf = s.duplicateOfClient ? byClient[s.duplicateOfClient] || null : null;
 
-  const candidates = stored.filter((s) => !s.dropped && !s.duplicateOf);
-  const vision = candidates.length
-    ? await scoreWithFallback({ photos: candidates.map((s) => ({ id: s.id, jpegBase64: s._b64, features: s.features })), service, brand })
-    : { photos: {}, attributes: {}, provider: 'none' };
+  for (const s of stored) { delete s._b64; delete s.duplicateOfClient; }
 
-  for (const s of stored) {
-    delete s._b64; delete s.duplicateOfClient;
-    const v = vision.photos[s.id];
-    if (v) {
-      s.checks.framing = v.framing; s.checks.background = v.background; s.checks.houseStyle = v.houseStyle;
-      s.detailCloseup = v.detailCloseup;
-      s.score = Math.round(Object.entries(WEIGHTS).reduce((sum, [k, w]) => sum + w * (s.checks[k] ?? 0), 0));
-      const words = [s.pixelReason, v.reason].filter(Boolean).join(', ').split(/\s+/);
-      s.reason = words.slice(0, 12).join(' ').replace(/,$/, '');
-    } else {
-      s.score = s.dropped ? Math.round((s.checks.sharpness + s.checks.glare + s.checks.exposure) / 6) : null;
-      s.reason = s.dropped ? s.dropped : s.duplicateOf ? "Near copy of a better photo, skipped" : '';
-    }
-  }
-
-  // Hero + carousel (up to 4 more), detail close-up second.
-  const ranked = stored.filter((s) => s.score != null && !s.dropped && !s.duplicateOf).sort((a, b) => b.score - a.score);
-  const hero = ranked[0] || null;
-  let rest = ranked.slice(1);
-  const detail = rest.find((s) => s.detailCloseup);
-  if (detail) rest = [detail, ...rest.filter((s) => s !== detail)];
-  const carouselIds = rest.slice(0, 4).map((s) => s.id);
-
-  const captions = await draftCaptions({ brand, service, attributes: vision.attributes });
-
+  // Save right away so the tech's upload finishes now. Picking and captions
+  // run on the server afterwards; the tech's phone isn't involved.
   const post = {
     id,
     createdAt: new Date().toISOString(),
     tech: tech || 'Nail tech',
     serviceId,
     status: 'needs_approval',
+    stage: 'picking', // picking → captions → null (ready); 'failed' on error
+    stageError: null,
     photos: stored,
-    heroId: hero?.id || null,
-    carouselIds,
-    attributes: vision.attributes,
-    visionProvider: vision.provider,
-    retakeTip: hero && hero.score < 60 ? retakeTip(hero) : null,
-    captions: { ...captions, seed: 0 },
+    heroId: null,
+    carouselIds: [],
+    attributes: {},
+    visionProvider: null,
+    retakeTip: null,
+    captions: { options: [], source: null, seed: 0 },
     chosen: 'A',
     edits: {},
     scheduledFor: null,
@@ -153,7 +129,78 @@ async function buildPost({ tech, serviceId, photos }) {
   };
   db.posts.unshift(post);
   save();
+  queue(post.id);
   return post;
+}
+
+// ---------- background work: pick photos, then write captions ----------
+const running = new Set();
+function queue(id) {
+  if (running.has(id)) return;
+  running.add(id);
+  processPost(id)
+    .catch((err) => {
+      console.error(`[post ${id}]`, err.message);
+      const p = findPost(id);
+      if (p) { p.stage = 'failed'; p.stageError = err.message; save(); }
+    })
+    .finally(() => running.delete(id));
+}
+
+async function processPost(id) {
+  let post = findPost(id);
+  if (!post) return;
+  const service = serviceById(post.serviceId);
+  const stored = post.photos;
+
+  if (post.stage === 'picking' || !post.heroId) {
+    post.stage = 'picking'; save();
+    const candidates = stored.filter((s) => !s.dropped && !s.duplicateOf);
+    const vision = candidates.length
+      ? await scoreWithFallback({
+          photos: candidates.map((s) => ({ id: s.id, jpegBase64: fs.readFileSync(path.join(PHOTOS, id, `${s.id}.jpg`)).toString('base64'), features: s.features })),
+          service, brand,
+        })
+      : { photos: {}, attributes: {}, provider: 'none' };
+    post = findPost(id); if (!post) return; // deleted meanwhile
+
+    for (const s of stored) {
+      const v = vision.photos[s.id];
+      if (v) {
+        s.checks.framing = v.framing; s.checks.background = v.background; s.checks.houseStyle = v.houseStyle;
+        s.detailCloseup = v.detailCloseup;
+        s.score = Math.round(Object.entries(WEIGHTS).reduce((sum, [k, w]) => sum + w * (s.checks[k] ?? 0), 0));
+        const words = [s.pixelReason, v.reason].filter(Boolean).join(', ').split(/\s+/);
+        s.reason = words.slice(0, 12).join(' ').replace(/,$/, '');
+      } else {
+        s.score = s.dropped ? Math.round((s.checks.sharpness + s.checks.glare + s.checks.exposure) / 6) : null;
+        s.reason = s.dropped ? s.dropped : s.duplicateOf ? 'Near copy of a better photo, skipped' : '';
+      }
+    }
+
+    // First photo + carousel (up to 4 more), detail close-up second.
+    const ranked = stored.filter((s) => s.score != null && !s.dropped && !s.duplicateOf).sort((a, b) => b.score - a.score);
+    const hero = ranked[0] || null;
+    let rest = ranked.slice(1);
+    const detail = rest.find((s) => s.detailCloseup);
+    if (detail) rest = [detail, ...rest.filter((s) => s !== detail)];
+    post.heroId = hero?.id || null;
+    post.carouselIds = rest.slice(0, 4).map((s) => s.id);
+    post.attributes = vision.attributes;
+    post.visionProvider = vision.provider;
+    post.retakeTip = hero && hero.score < 60 ? retakeTip(hero) : null;
+    post.stage = 'captions';
+    save();
+  }
+
+  if (post.stage === 'captions' || !post.captions?.options?.length) {
+    const captions = await draftCaptions({ brand, service, attributes: post.attributes });
+    post = findPost(id); if (!post) return;
+    post.captions = { ...captions, seed: 0 };
+    post.edits = {};
+  }
+  post.stage = null; post.stageError = null;
+  save();
 }
 
 // ---------- HTTP ----------
@@ -215,7 +262,7 @@ const server = http.createServer(async (req, res) => {
       }
       if (req.method === 'POST' && url.pathname === '/api/posts/approve-all') {
         const now = new Date().toISOString();
-        for (const p of db.posts.filter((p) => p.status === 'needs_approval' && p.heroId)) {
+        for (const p of db.posts.filter((p) => p.status === 'needs_approval' && p.heroId && !p.stage)) {
           p.status = 'ready'; p.approvedAt = now; p.scheduledFor = nextFreeSlot();
         }
         save();
@@ -247,7 +294,13 @@ const server = http.createServer(async (req, res) => {
           save();
           return send(res, 200, { post });
         }
+        if (req.method === 'POST' && action === 'retry') {
+          if (post.stage === 'failed') post.stage = post.heroId ? 'captions' : 'picking';
+          queue(post.id);
+          return send(res, 200, { post });
+        }
         if (req.method === 'POST' && action === 'approve') {
+          if (post.stage) return send(res, 409, { error: 'This set is still getting ready' });
           post.status = 'ready'; post.approvedAt = new Date().toISOString();
           post.scheduledFor = post.scheduledFor || nextFreeSlot();
           save();
@@ -279,6 +332,9 @@ const server = http.createServer(async (req, res) => {
     return send(res, err.status || 500, { error: err.message });
   }
 });
+
+// Finish any sets that were mid-way when the server stopped.
+for (const p of db.posts) if (p.stage && p.stage !== 'failed') queue(p.id);
 
 server.listen(PORT, '0.0.0.0', async () => {
   const vp = await pickVisionProvider();
