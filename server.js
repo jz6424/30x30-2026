@@ -11,6 +11,7 @@ import { draftCaptions } from './lib/captions.js';
 import { resolveBooking, addonAttributes } from './lib/menu.js';
 import { createAuth } from './lib/auth.js';
 import { createDispatch } from './lib/dispatch.js';
+import { activity } from './lib/activity.js';
 import { setupTeam } from './lib/team.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -248,6 +249,7 @@ function publicData() {
       tech: p.tech,
       locationId: p.locationId || 'dtla',
       service: p.booking?.serviceName || null,
+      serviceId: p.booking?.serviceId || null,
       details: p.booking ? [p.booking.name.split(', ').slice(1).join(', '), ...p.booking.addons.filter((a) => !/removal|repair|buff/.test(a.id)).map((a) => a.name)].filter(Boolean) : [],
       photos: [p.heroId, ...p.carouselIds].map((id) => p.photos.find((x) => x.id === id)).filter(Boolean).map((x) => ({ url: x.url, width: x.width, height: x.height })),
       approvedAt: p.approvedAt,
@@ -401,6 +403,10 @@ const server = http.createServer(async (req, res) => {
         const body = req.method === 'GET' ? {} : await readBody(req, 20_000);
         const [, , kind, id, act] = parts;
         if (req.method === 'GET' && !kind) return send(res, 200, adminData());
+        if (req.method === 'GET' && kind === 'activity') {
+          const days = [7, 30, 0].includes(Number(url.searchParams.get('days'))) ? Number(url.searchParams.get('days')) : 7;
+          return send(res, 200, activity(brand, db, dispatch, days));
+        }
         if (kind === 'techs' && req.method === 'POST' && !id) {
           if (!/^\d{4,6}$/.test(String(body.pin || ''))) return send(res, 400, { error: 'Give them a 4 to 6 digit PIN to sign in with' });
           const t = team.addTech(body); auth.setPin(t.id, body.pin);

@@ -17,6 +17,7 @@ const ICONS = {
   images: '<path d="M18 22H4a2 2 0 0 1-2-2V6"/><path d="m22 13-1.296-1.296a2.41 2.41 0 0 0-3.408 0L11 18"/><circle cx="12" cy="8" r="2"/><rect width="16" height="16" x="6" y="2" rx="2"/>',
   pencil: '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/>',
   x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
   left: '<path d="m15 18-6-6 6-6"/>',
   right: '<path d="m9 18 6-6-6-6"/>',
   logout: '<path d="m16 17 5-5-5-5"/><path d="M21 12H9"/><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>',
@@ -1070,7 +1071,61 @@ setInterval(pollJobs, 4000);
 
 // ---------- admin: team and locations (owner only) ----------
 state.admin = null;
-state.view.adminTab = 'team';
+state.view.adminTab = 'activity';
+state.view.actDays = 7;
+state.activity = null;
+const ago = (iso) => {
+  if (!iso) return 'No activity yet';
+  const m = Math.round((Date.now() - Date.parse(iso)) / 60000);
+  if (m < 2) return 'Active just now';
+  if (m < 60) return `Active ${m} min ago`;
+  const h = Math.round(m / 60); if (h < 24) return `Active ${h} hr ago`;
+  const d = Math.round(h / 24); return `Active ${d} day${d === 1 ? '' : 's'} ago`;
+};
+const fmtHrs = (h) => (h >= 10 ? Math.round(h) : Math.round(h * 10) / 10).toString();
+const stat = (n, label) => `<div><b>${n}</b><span>${label}</span></div>`;
+
+// Activity: what each artist and each studio has been doing. Counts only, no money.
+async function renderActivity(head) {
+  const days = state.view.actDays;
+  if (!state.activity || state.activity.days !== days) {
+    $app.innerHTML = `${head}<div class="card muted" style="text-align:center"><div class="spinner"></div>Loading</div>`;
+    try { state.activity = await api(`/api/admin/activity?days=${days}`); } catch (err) { $app.innerHTML = `${head}<div class="card">${esc(err.message)}</div>`; return; }
+    if (state.view.adminTab !== 'activity' || !location.hash.startsWith('#/admin')) return;
+  }
+  const A = state.activity, T = A.total;
+  const nameOf = (id) => A.techs.find((t) => t.id === id)?.name || id;
+  const range = { 7: 'in the last 7 days', 30: 'in the last 30 days', 0: 'so far' }[days];
+  const techs = A.techs.filter((t) => t.active);
+  const locs = [...A.locations.filter((l) => l.status === 'open'), ...(A.houseCalls.jobsDone || A.houseCalls.upcoming ? [A.houseCalls] : []), ...A.locations.filter((l) => l.status !== 'open')];
+  $app.innerHTML = `${head}
+    <div class="seg mini" id="act-days" style="margin-bottom:12px">${[[7, 'This week'], [30, '30 days'], [0, 'All time']].map(([d, l]) => `<button data-d="${d}" class="${days === d ? 'on' : ''}">${l}</button>`).join('')}</div>
+    <div class="card"><div class="stats act-stats">
+      ${stat(T.uploads, 'sets uploaded')}${stat(T.approved, 'approved')}${stat(T.jobsDone, 'jobs done')}
+      ${stat(T.upcoming, 'upcoming jobs')}${stat(`${T.onCallNow}/${T.artists}`, 'on call now')}${stat(T.toReview, 'to review')}
+    </div><p class="muted small" style="margin:12px 0 0;text-align:center">Uploads, approvals and finished jobs ${range}. Upcoming counts every booked job still ahead</p></div>
+    ${T.toReview ? `<a class="card list-item" href="#/posts"><div class="meta"><div class="title">${T.toReview} set${T.toReview === 1 ? '' : 's'} waiting for your review</div><div class="muted small">Approve them to show them on the site</div></div><span class="chev">${icon('right')}</span></a>` : ''}
+
+    <div class="section-label">By artist</div>
+    ${techs.map((t) => `<a class="card act-row" href="#/admin/tech/${t.id}">
+      <div class="act-top"><div><div class="title">${esc(t.name)}${t.sample ? ' <span class="muted small">(sample)</span>' : ''}</div>
+        <div class="muted small">${t.onCallNow ? `<span style="color:var(--ok)">${esc(availabilityLine(t.oncall))}</span>` : esc(ago(t.lastActive))}</div></div><span class="chev">${icon('right')}</span></div>
+      <div class="stats act-mini">${stat(t.uploads, 'sets')}${stat(t.approved, 'approved')}${stat(t.jobsDone, 'jobs done')}${stat(fmtHrs(t.hoursOnCall), 'hrs on call')}</div>
+      <div class="muted small act-foot">${[t.upcoming ? `${t.upcoming} upcoming` : '', t.saidYes ? `said yes to ${t.saidYes}` : '', t.saidNo ? `passed on ${t.saidNo}` : '', t.oncall.hours?.length ? `regular hours ${t.oncall.hours.map(windowLabel).join('; ')}` : ''].filter(Boolean).map(esc).join(' · ') || 'No requests taken yet'}</div>
+    </a>`).join('') || '<div class="card muted">No artists yet</div>'}
+    <a class="btn btn-line" href="#/admin/tech/new" style="width:100%">Add an artist</a>
+
+    <div class="section-label">By location</div>
+    ${locs.map((l) => `<div class="card act-loc">
+      <div class="act-top"><div><div class="title">${esc(l.name)}</div>
+        <div class="muted small">${l.id === 'house' ? 'Jobs at clients’ homes, hotels and offices' : l.status === 'open' ? `${l.artists.length} artist${l.artists.length === 1 ? '' : 's'}${l.waiting ? ` · <span style="color:var(--bad)">${l.waiting} waiting for an artist</span>` : ''}` : 'Coming soon'}</div></div>
+        ${l.id === 'house' ? '' : `<a class="link-plain small" href="#/admin/location/${l.id}">Edit</a>`}</div>
+      ${l.status === 'coming-soon' ? '' : `<div class="stats act-mini">${l.id === 'house' ? '' : stat(l.uploads, 'sets')}${l.id === 'house' ? '' : stat(l.approved, 'approved')}${stat(l.jobsDone, 'jobs done')}${stat(l.upcoming, 'upcoming')}</div>`}
+      ${l.id === 'house' ? '' : `<div class="chips act-team">${l.artists.map((id) => { const t = A.techs.find((x) => x.id === id); return `<a class="chip" href="#/admin/tech/${id}">${t?.onCallNow ? '<i class="dot-on"></i>' : ''}${esc(nameOf(id))}</a>`; }).join('')}<button type="button" class="chip add" data-add-here="${l.id}">${icon('plus')}Add an artist here</button></div>`}
+    </div>`).join('')}
+    <p class="muted small" style="margin-top:8px">Hours on call count time with the On call switch on. Regular hours aren’t counted</p>`;
+  document.getElementById('act-days').onclick = (e) => { const d = e.target.closest('[data-d]')?.dataset.d; if (d != null) { state.view.actDays = Number(d); renderAdmin(); } };
+}
 const PIN_NOTE = { demo: 'Demo PIN', admin: 'PIN set', server: 'PIN set on the server', none: 'No PIN yet' };
 
 async function renderAdmin(sub, id) {
@@ -1085,12 +1140,24 @@ async function renderAdmin(sub, id) {
   const { techs, locations } = state.admin;
   const lname = (lid) => locations.find((l) => l.id === lid)?.name || '';
   const active = techs.filter((t) => t.active !== false), gone = techs.filter((t) => t.active === false);
-  $app.innerHTML = `
+  const head = `
     <h1>Admin</h1>
     <div class="seg" id="adm-seg" style="margin-bottom:16px">
+      <button data-t="activity" class="${tab === 'activity' ? 'on' : ''}">Activity</button>
       <button data-t="team" class="${tab === 'team' ? 'on' : ''}">Team (${active.length})</button>
       <button data-t="locations" class="${tab === 'locations' ? 'on' : ''}">Locations (${locations.filter((l) => l.status !== 'hidden').length})</button>
-    </div>
+    </div>`;
+  const bindTabs = () => { document.getElementById('adm-seg').onclick = (e) => { const t = e.target.closest('[data-t]')?.dataset.t; if (t) { state.view.adminTab = t; if (t === 'activity') state.activity = null; renderAdmin(); } }; };
+  $app.onclick = async (e) => {
+    const here = e.target.closest('[data-add-here]');
+    if (here) { state.view.newTechLocs = [here.dataset.addHere]; location.hash = '#/admin/tech/new'; return; }
+    const r = e.target.closest('[data-restore]');
+    if (!r) return;
+    try { state.admin = await api(`/api/admin/techs/${r.dataset.restore}/restore`, { method: 'POST', body: {} }); await refreshConfig(); toast('Back on the team'); renderAdmin(); }
+    catch (err) { toast(err.message); }
+  };
+  if (tab === 'activity') { await renderActivity(head); return bindTabs(); }
+  $app.innerHTML = `${head}
     ${tab === 'team' ? `
       ${active.map((t) => `<a class="card list-item" href="#/admin/tech/${t.id}"><span class="mono-s">${esc(t.name[0])}</span><div class="meta"><div class="title">${esc(t.name)}${t.sample ? ' <span class="muted small">(sample)</span>' : ''}</div>
         <div class="muted small">${esc(t.locationIds.map(lname).filter(Boolean).join(', '))} · ${t.serviceIds.length} services</div>
@@ -1103,19 +1170,14 @@ async function renderAdmin(sub, id) {
         <div class="muted small">${esc(l.address || 'No address yet')}</div>
         <span class="status ${l.status === 'open' ? 'ready' : l.status === 'coming-soon' ? 'needs_approval' : 'posted'}">${{ open: 'Open', 'coming-soon': 'Coming soon', hidden: 'Hidden' }[l.status]} · ${techs.filter((t) => t.active !== false && t.locationIds.includes(l.id)).length} artists</span></div><span class="chev">${icon('right')}</span></a>`).join('')}
       <a class="btn btn-primary" href="#/admin/location/new" style="margin-top:4px">Add a location</a>`}`;
-  document.getElementById('adm-seg').onclick = (e) => { const t = e.target.closest('[data-t]')?.dataset.t; if (t) { state.view.adminTab = t; renderAdmin(); } };
-  $app.onclick = async (e) => {
-    const r = e.target.closest('[data-restore]');
-    if (!r) return;
-    try { state.admin = await api(`/api/admin/techs/${r.dataset.restore}/restore`, { method: 'POST', body: {} }); await refreshConfig(); toast('Back on the team'); renderAdmin(); }
-    catch (err) { toast(err.message); }
-  };
+  bindTabs();
 }
 async function refreshConfig() { state.config = await api('/api/config'); state.jobs = null; }
 
 function renderTechForm(id) {
   const isNew = id === 'new';
-  const t = isNew ? { name: '', bio: '', instagram: '', specialties: [], serviceIds: [], locationIds: [], pin: 'none' } : state.admin.techs.find((x) => x.id === id);
+  const t = isNew ? { name: '', bio: '', instagram: '', specialties: [], serviceIds: [], locationIds: state.view.newTechLocs || [], pin: 'none' } : state.admin.techs.find((x) => x.id === id);
+  state.view.newTechLocs = null;
   if (!t) { location.hash = '#/admin'; return; }
   const { services, serviceGroups } = state.config.brand;
   const locs = state.admin.locations.filter((l) => l.status !== 'hidden');

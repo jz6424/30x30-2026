@@ -12,11 +12,13 @@ Built for Converge.AI at Stanford, Nov 20 2026.
 | `/` | Clients | Home with the latest work, nail artists and locations |
 | `/tech/:id` | Clients | An artist's page: bio, specialties, Instagram, Book button, and a gallery of their approved sets |
 | `/request` | Clients | Request an artist now or at a set time, at the studio or as a house call, then follow it live |
+| `/gallery` | Clients | Every approved set, filtered by artist, service or studio (`?tech=`, `?service=`, `?at=`) |
+| `/artists` | Clients | The whole team, each linking to their page |
 | `/locations` | Clients | Map of every open location (Leaflet + OpenStreetMap), hours, directions, who works there and a gallery per location |
 
 A set appears on the public pages the moment Tina approves it in `/studio` (the public pages refresh every 4 seconds). Only approved sets and their photos are public; captions, drafts and skipped photos are not.
 
-Tina manages the team and the locations in `/studio` → Admin (the sliders icon at the top). They start from `lib/brand.json` and are saved in `data/db.json` after the first run. **Mia, Jasmine, Kim and the Arts District location are samples**: edit or remove them in Admin. Set `BOOKING_URL` (for example in Render's environment settings) to the studio's booking page; until then the Book buttons say online booking is coming soon.
+Tina manages the team and the locations in `/studio` → Admin (the sliders icon at the top). Admin opens on **Activity**: for the last 7 days, 30 days or all time, it shows sets uploaded and approved, jobs done, upcoming jobs and hours on call, per artist and per location, with no money figures. Tap an artist to manage them, or add an artist straight to a location. They start from `lib/brand.json` and are saved in `data/db.json` after the first run. **Mia, Jasmine, Kim and the Arts District location are samples**: edit or remove them in Admin. Set `BOOKING_URL` (for example in Render's environment settings) to the studio's booking page; until then the Book buttons say online booking is coming soon.
 
 ## Staff sign-in (PINs)
 
@@ -122,6 +124,7 @@ The vision step is pluggable (`lib/vision.js`). Providers: `claude` (used when `
 - `scripts/phone.js`: `npm run phone`, the app plus an HTTPS tunnel and QR code.
 - `lib/dispatch.js`: on-demand requests: who qualifies, schedule clashes, accept, assign, expiry.
 - `lib/team.js`: the team and locations that Tina edits in Admin.
+- `lib/activity.js`: the counts behind Admin → Activity.
 - `lib/auth.js`: PIN sign-in, signed session cookie, rate limit.
 - `scripts/hash-pin.js`: `npm run hash-pin -- <pin>` prints the value for a `PIN_HASH_<ID>` env var.
 

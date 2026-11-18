@@ -47,7 +47,7 @@ p { margin: 0; line-height: 1.65; }
 .nav nav a { text-decoration: none; color: var(--ink); font-family: var(--serif); font-size: 15px; transition: color .15s var(--ease); }
 .nav nav a:hover, .nav nav a.on { color: var(--gold-ink); }
 @media (max-width: 430px) { .nav { gap: 12px; } .wordmark b { font-size: 17px; } .wordmark small { font-size: 8px; gap: 6px; } .wordmark small::before, .wordmark small::after { width: 18px; } .nav nav { gap: 12px; } .nav nav a { font-size: 13px; } .nav .btn-small { padding: 0 12px; } }
-@media (max-width: 400px) { .nav nav a[href="/#work"] { display: none; } }
+@media (max-width: 400px) { .nav nav a[href="/artists"] { display: none; } }
 
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 52px; padding: 0 28px; border-radius: 999px; border: 0; cursor: pointer;
   background: var(--grad); color: var(--ink); font: inherit; font-weight: 600; font-size: 14px; letter-spacing: .08em; text-transform: uppercase; text-decoration: none;
@@ -210,3 +210,39 @@ textarea.field { resize: vertical; line-height: 1.4; }
 .pulse::before { content: ""; border: 2px solid var(--gold); animation: ping 1.8s var(--ease) infinite; }
 @keyframes ping { from { transform: scale(.4); opacity: 1; } to { transform: scale(1); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .pulse::before { animation: none; opacity: .4; } }
+
+/* links onward, and hover: photos ease in, cards lift, gold underlines */
+.head h2 a, .place h3 a { color: inherit; text-decoration: none; }
+.more { display: inline-flex; align-items: center; gap: 6px; color: var(--gold-ink); font-size: 14px; font-weight: 500; text-decoration: none; white-space: nowrap; }
+.more::after { content: "→"; transition: transform .2s var(--ease); }
+.more.small { font-size: 13px; }
+.who a, .profile .muted a, .now a.open, .sheet .body a:not(.btn), .foot a { text-decoration: none; background: linear-gradient(currentColor, currentColor) 0 100% / 0 1px no-repeat; transition: background-size .25s var(--ease), color .15s var(--ease); }
+.who a, .profile .muted a { color: var(--ink); }
+.filters { display: grid; gap: 8px; margin-bottom: 24px; }
+.filters .chiprow { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+.filters .chiprow::-webkit-scrollbar { display: none; }
+.filters .pill { flex: none; text-decoration: none; }
+.place { scroll-margin-top: 96px; transition: box-shadow .25s var(--ease), transform .25s var(--ease); }
+.artist { transition: border-color .2s var(--ease), box-shadow .25s var(--ease), transform .25s var(--ease); }
+.work .ph img, .arch img, .artist .thumbs img { transition: transform .6s var(--ease), opacity .3s var(--ease); }
+.btn { transition: filter .15s var(--ease), transform .15s var(--ease), box-shadow .2s var(--ease), background-color .15s var(--ease); }
+.pill, .pickrow, .oncall-line, .tag { transition: background-color .15s var(--ease), border-color .15s var(--ease), color .15s var(--ease), transform .2s var(--ease); }
+.nav nav a { background: linear-gradient(var(--gold), var(--gold)) 50% 100% / 0 1px no-repeat; padding-bottom: 2px; transition: background-size .25s var(--ease), color .15s var(--ease); }
+.nav nav a.on { background-size: 100% 1px; }
+@media (hover: hover) {
+  .work:hover .ph img, .arch:hover img { transform: scale(1.05); }
+  .work:hover .t { color: var(--gold-ink); }
+  .artist:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(180, 135, 60, .14); }
+  .artist:hover .thumbs img { transform: scale(1.06); }
+  .place:hover { box-shadow: 0 12px 28px rgba(180, 135, 60, .12); }
+  .btn:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(180, 135, 60, .28); }
+  .btn-line:hover { border-color: var(--gold-head); box-shadow: none; }
+  .nav nav a:hover { background-size: 100% 1px; }
+  .more:hover::after { transform: translateX(4px); }
+  .head h2 a:hover, .place h3 a:hover { color: var(--gold-ink); }
+  .who a:hover, .profile .muted a:hover, .now a.open:hover, .sheet .body a:not(.btn):hover, .foot a:hover { background-size: 100% 1px; color: var(--gold-ink); }
+  .pill:not(.on):not(:disabled):hover { border-color: var(--gold-head); background: var(--sel); }
+  .pickrow:hover { background: var(--sel); }
+  .oncall-line:hover { background: #F4E8D2; }
+  .wordmark:hover b { color: var(--gold-ink); }
+}

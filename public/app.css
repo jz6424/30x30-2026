@@ -269,3 +269,30 @@ details.more summary { cursor: pointer; color: var(--gold-ink); font-size: 15px;
 .add-hours { display: grid; gap: 12px; padding-top: 4px; }
 .team-row { flex-wrap: wrap; }
 .team-sub { flex-basis: 100%; margin: 2px 0 10px; }
+
+/* admin: activity */
+.act-stats { grid-template-columns: repeat(3, 1fr); row-gap: 16px; }
+.act-stats b { color: var(--gold-head); }
+.act-row { display: block; text-decoration: none; color: inherit; transition: border-color .2s var(--ease), box-shadow .2s var(--ease); }
+.act-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.act-top .title { font-family: var(--serif); font-size: 17px; margin-bottom: 2px; }
+.act-mini { grid-template-columns: repeat(4, 1fr); margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--line); }
+.act-mini b { font-size: 20px; }
+.act-mini span { font-size: 12px; }
+.act-foot { margin-top: 10px; }
+.act-team { margin-top: 14px; }
+.act-team .chip { min-height: 40px; text-decoration: none; display: inline-flex; align-items: center; }
+.act-team .chip.add { border-style: dashed; color: var(--gold-ink); background: transparent; }
+.act-team .chip .ico { width: 16px; height: 16px; }
+.dot-on { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); display: inline-block; }
+@media (hover: hover) {
+  .act-row:hover, a.card.list-item:hover { border-color: var(--gold); box-shadow: 0 8px 20px rgba(180, 135, 60, .12); }
+  .act-row:hover .chev { transform: translateX(3px); }
+  .chev { transition: transform .2s var(--ease); }
+  .act-team .chip:hover { border-color: var(--gold-head); background: var(--cream); }
+  .btn-primary:hover, .btn-gold:hover { box-shadow: 0 6px 16px rgba(180, 135, 60, .28); }
+  .btn-line:hover { background: var(--cream); }
+  .chip:not(.on):hover { border-color: var(--gold-head); }
+  .seg button:not(.on):hover { color: var(--ink); }
+  .tabs a:not(.on):hover { color: var(--ink); }
+}

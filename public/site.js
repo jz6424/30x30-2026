@@ -50,13 +50,14 @@ function placeCard(l, { withGallery = false } = {}) {
     return `<div class="place soon-card"><span class="soon">Coming soon</span><h3>${esc(l.name)}</h3><p class="muted">${esc(l.hoursDetail)}. Follow <a href="${esc(data.brand.instagramUrl)}" target="_blank" rel="noopener">${esc(data.brand.handle)}</a> for the opening date.</p></div>`;
   }
   const sets = data.gallery.filter((g) => g.locationId === l.id);
-  return `<div class="place">
+  return `<div class="place" id="loc-${l.id}">
     <span class="open">${esc(l.hours)}</span>
-    <h3>${esc(l.name)}</h3>
+    <h3><a href="/locations#loc-${l.id}" data-link>${esc(l.name)}</a></h3>
     <p class="muted">${esc(l.address)}<br>${esc(l.hoursDetail)}${l.phone ? `<br><a href="tel:${l.phone.replace(/\D/g, '')}">${esc(l.phone)}</a>` : ''}</p>
     <div class="row"><a class="btn" href="/request?at=${l.id}" data-link>Request an artist</a><a class="btn btn-line" href="${directions(l)}" target="_blank" rel="noopener">Directions</a></div>
-    <p class="small muted">${esc(data.techs.filter((t) => techLocs(t).some((x) => x.id === l.id)).map((t) => t.name).join(', ') || 'Artists coming soon')}</p>
-    ${withGallery ? (sets.length ? `<div class="strip">${sets.map((s) => workCard(s, { small: true })).join('')}</div>` : '<p class="muted small">New work from this studio shows up here</p>') : ''}
+    <p class="small muted who">${data.techs.filter((t) => techLocs(t).some((x) => x.id === l.id)).map((t) => `<a href="/tech/${t.id}" data-link>${esc(t.name)}</a>`).join(', ') || 'Artists coming soon'}</p>
+    ${sets.length && !withGallery ? `<a class="more small" href="/gallery?at=${l.id}" data-link>Work from this studio</a>` : ''}
+    ${withGallery ? (sets.length ? `<div class="strip">${sets.slice(0, 10).map((s) => workCard(s, { small: true })).join('')}</div><a class="more small" href="/gallery?at=${l.id}" data-link>All work from this studio</a>` : '<p class="muted small">New work from this studio shows up here</p>') : ''}
   </div>`;
 }
 
@@ -99,7 +100,7 @@ function home() {
         <h1 class="display">24 Hour Nail Salon in Downtown Los Angeles</h1>
         <span class="rule" aria-hidden="true"></span>
         <p class="tagline">Private luxury. Perfect nails.</p>
-        <p class="now"><span class="open">Open now</span><span class="clock" id="clock" aria-label="Time in Downtown LA"><span class="hh">${t.h}</span>:<span class="mm">${t.m}</span> <span class="ap">${t.ap}</span> in DTLA</span></p>
+        <p class="now"><a class="open" href="/locations" data-link>Open now</a><span class="clock" id="clock" aria-label="Time in Downtown LA"><span class="hh">${t.h}</span>:<span class="mm">${t.m}</span> <span class="ap">${t.ap}</span> in DTLA</span></p>
         <p class="lede">${esc(lateLine)}</p>
         <div class="actions"><a class="btn" href="/request" data-link>Request an artist</a><a class="btn btn-line" ${bookAttrs()}>Book ahead</a></div>
         <a class="oncall-line" href="/request" data-link><span class="${n ? 'open' : 'soon'}">${onCallLine()}</span><span>${n ? 'At the studio or at your place' : 'Request a time and we’ll find you an artist'}</span></a>
@@ -107,15 +108,15 @@ function home() {
       ${data.gallery.length ? `<div class="arches" style="--n:${Math.min(3, data.gallery.length)}">${data.gallery.slice(0, 3).map((g, i) => `<div class="arch" data-set="${g.id}"><img src="${g.photos[0].url}" alt="${esc(g.service || 'Nail set')} by ${esc(techOf(g.techId)?.name || g.tech)}"${i ? ' loading="lazy"' : ''}></div>`).join('')}</div>` : `<div class="hero-empty">The newest sets from the studio show here</div>`}
     </div>
     <section id="work">
-      <div class="head"><div><p class="kicker">Our gallery</p><h2>Latest work</h2></div></div>
-      ${gallery(data.gallery.slice(0, 12), 'New sets from the studio appear here as soon as they’re approved')}
+      <div class="head"><div><p class="kicker">Our gallery</p><h2><a href="/gallery" data-link>Latest work</a></h2></div>${data.gallery.length ? '<a class="more" href="/gallery" data-link>View the gallery</a>' : ''}</div>
+      ${gallery(data.gallery.slice(0, 8), 'New sets from the studio appear here as soon as they’re approved')}
     </section>
     <section id="artists" class="cream">
-      <div class="head"><div><p class="kicker">Our artists</p><h2>Nail artists</h2></div></div>
+      <div class="head"><div><p class="kicker">Our artists</p><h2><a href="/artists" data-link>Nail artists</a></h2></div><a class="more" href="/artists" data-link>Meet the team</a></div>
       <div class="artists">${data.techs.map(artistCard).join('')}</div>
     </section>
     <section id="visit">
-      <div class="head"><div><p class="kicker">Come see us</p><h2>Visit</h2></div><a href="/locations" data-link>Map</a></div>
+      <div class="head"><div><p class="kicker">Come see us</p><h2><a href="/locations" data-link>Visit</a></h2></div><a class="more" href="/locations" data-link>See the map</a></div>
       <div class="places">${data.locations.map((l) => placeCard(l)).join('')}</div>
     </section>`;
 }
@@ -125,9 +126,9 @@ function techPage(id) {
   if (!t) return notFound();
   const sets = data.gallery.filter((g) => g.techId === t.id);
   return `
-    <a class="back" href="/#artists" data-link>‹ All artists</a>
+    <a class="back" href="/artists" data-link>‹ All artists</a>
     <div class="profile">
-      <div class="top"><div class="mono big">${esc(t.name[0])}</div><div><h1>${esc(t.name)}</h1><p class="muted">Nail artist at ${esc(techLocs(t).map((l) => l.name).join(', ') || 'Confessionail')}</p>${(data.onCall || []).includes(t.id) ? '<span class="open" style="margin-top:4px">On call now</span>' : ''}</div></div>
+      <div class="top"><div class="mono big">${esc(t.name[0])}</div><div><h1>${esc(t.name)}</h1><p class="muted">Nail artist at ${techLocs(t).map((l) => `<a href="/locations#loc-${l.id}" data-link>${esc(l.name)}</a>`).join(', ') || 'Confessionail'}</p>${(data.onCall || []).includes(t.id) ? '<span class="open" style="margin-top:4px">On call now</span>' : ''}</div></div>
       <p class="bio">${esc(t.bio)}</p>
       <div class="tags">${t.specialties.map((s) => `<span class="tag">${esc(s)}</span>`).join('')}</div>
       <div class="actions">
@@ -137,8 +138,38 @@ function techPage(id) {
       </div>
     </div>
     <section>
-      <div class="head"><h2>${esc(t.name)}’s work</h2><span class="muted small">${sets.length} set${sets.length === 1 ? '' : 's'}</span></div>
+      <div class="head"><h2>${esc(t.name)}’s work</h2>${sets.length ? `<a class="more" href="/gallery?tech=${t.id}" data-link>${sets.length} set${sets.length === 1 ? '' : 's'} in the gallery</a>` : ''}</div>
       ${gallery(sets, `${t.name}’s approved sets appear here`)}
+    </section>`;
+}
+
+// The whole gallery, filtered by artist, service or studio through the address (?tech= ?service= ?at=).
+function galleryPage() {
+  const q = new URLSearchParams(location.search);
+  const f = { tech: q.get('tech'), service: q.get('service'), at: q.get('at') };
+  const sets = data.gallery.filter((g) => (!f.tech || g.techId === f.tech) && (!f.service || g.serviceId === f.service) && (!f.at || g.locationId === f.at));
+  const link = (k, v) => { const n = new URLSearchParams(location.search); if (v == null || n.get(k) === v) n.delete(k); else n.set(k, v); const s = n.toString(); return `/gallery${s ? '?' + s : ''}`; };
+  const chip = (k, v, label) => `<a class="pill ${f[k] === v ? 'on' : ''}" href="${link(k, v)}" data-link>${esc(label)}</a>`;
+  const services = [...new Map(data.gallery.filter((g) => g.serviceId).map((g) => [g.serviceId, g.service])).entries()];
+  const locs = openLocs().filter((l) => data.gallery.some((g) => g.locationId === l.id));
+  const t = f.tech && techOf(f.tech);
+  return `
+    <section style="border:0">
+      <div class="head"><div><p class="kicker">Our gallery</p><h1>${t ? `${esc(t.name)}’s work` : 'Gallery'}</h1></div><span class="muted small">${sets.length} set${sets.length === 1 ? '' : 's'}</span></div>
+      <div class="filters">
+        ${data.techs.length > 1 ? `<div class="chiprow"><a class="pill ${!f.tech ? 'on' : ''}" href="${link('tech', null)}" data-link>All artists</a>${data.techs.map((x) => chip('tech', x.id, x.name)).join('')}</div>` : ''}
+        ${services.length > 1 ? `<div class="chiprow"><a class="pill ${!f.service ? 'on' : ''}" href="${link('service', null)}" data-link>Every service</a>${services.map(([id, name]) => chip('service', id, name)).join('')}</div>` : ''}
+        ${locs.length > 1 ? `<div class="chiprow"><a class="pill ${!f.at ? 'on' : ''}" href="${link('at', null)}" data-link>Every studio</a>${locs.map((l) => chip('at', l.id, l.name)).join('')}</div>` : ''}
+      </div>
+      ${gallery(sets, f.tech || f.service || f.at ? 'No sets match yet. Try another filter' : 'New sets from the studio appear here as soon as they’re approved')}
+      ${t ? `<div class="actions" style="margin-top:24px"><a class="btn" href="/tech/${t.id}" data-link>About ${esc(t.name)}</a><a class="btn btn-line" href="/request?pro=${t.id}" data-link>Request ${esc(t.name)}</a></div>` : ''}
+    </section>`;
+}
+function artistsPage() {
+  return `
+    <section style="border:0">
+      <div class="head"><div><p class="kicker">Our artists</p><h1>Nail artists</h1></div></div>
+      <div class="artists">${data.techs.map(artistCard).join('')}</div>
     </section>`;
 }
 
@@ -206,7 +237,8 @@ function openSet(id) {
     <div class="body">
       <h2>${esc(set.service || 'Nail set')}</h2>
       ${set.details.length ? `<p class="muted">${esc(set.details.join(' · '))}</p>` : ''}
-      <p class="small">by ${t ? `<a href="/tech/${t.id}" data-link>${esc(t.name)}</a>` : esc(set.tech)} · ${esc(locOf(set.locationId)?.name || '')}</p>
+      <p class="small">by ${t ? `<a href="/tech/${t.id}" data-link>${esc(t.name)}</a>` : esc(set.tech)}${locOf(set.locationId) ? ` · <a href="/locations#loc-${set.locationId}" data-link>${esc(locOf(set.locationId).name)}</a>` : ''}</p>
+      ${set.serviceId ? `<a class="more small" href="/gallery?service=${set.serviceId}" data-link>More ${esc(set.service)}</a>` : ''}
       <a class="btn" ${bookAttrs()} style="margin-top:8px">${t ? `Book with ${esc(t.name)}` : 'Book this look'}</a>
     </div>
   </div>`;
@@ -449,16 +481,20 @@ function render() {
   let html;
   if (path === '/') html = home();
   else if (path === '/locations') html = locationsPage();
+  else if (path === '/gallery') html = galleryPage();
+  else if (path === '/artists') html = artistsPage();
   else if (path.startsWith('/tech/')) html = techPage(decodeURIComponent(path.split('/')[2]));
   else if (path === '/request') html = requestPage();
   else if (path.startsWith('/request/')) html = statusPage(decodeURIComponent(path.split('/')[2]));
   else html = notFound();
   $page.innerHTML = html;
-  document.querySelectorAll('.nav nav a').forEach((a) => a.classList.toggle('on', a.getAttribute('href') === path));
+  const section = path.startsWith('/tech/') ? '/artists' : path;
+  document.querySelectorAll('.nav nav a').forEach((a) => a.classList.toggle('on', a.getAttribute('href') === section));
   document.getElementById('book-top').outerHTML = `<a class="btn btn-small" id="book-top" href="/request" data-link>Request</a>`;
   document.getElementById('foot').innerHTML = `
     <div><b style="font-family:var(--serif);font-size:17px;color:var(--ink);font-weight:500">${esc(data.brand.name)}</b></div>
-    <div>${esc(data.brand.address)} · Open 24 hours</div>
+    <div><a href="/locations" data-link>${esc(data.brand.address)}</a> · Open 24 hours</div>
+    <div><a href="/gallery" data-link>Gallery</a> · <a href="/artists" data-link>Artists</a> · <a href="/request" data-link>Request an artist</a></div>
     <div><a href="${esc(data.brand.instagramUrl)}" target="_blank" rel="noopener">${esc(data.brand.handle)}</a> · <a href="/studio">Staff</a></div>`;
   applyTime();
   if (path === '/locations') drawMap();
@@ -470,10 +506,13 @@ function render() {
 function go(href) {
   const url = new URL(href, location.origin);
   if (url.pathname + url.search !== location.pathname + location.search) {
+    const samePage = url.pathname === location.pathname;
+    const y = window.scrollY;
     history.pushState({}, '', url.pathname + url.search + url.hash);
-    closeSet(); render(); window.scrollTo(0, 0);
+    closeSet(); render(); window.scrollTo(0, samePage ? y : 0);
   }
-  if (url.hash) document.getElementById(url.hash.slice(1))?.scrollIntoView({ behavior: 'smooth' });
+  else closeSet();
+  if (url.hash) document.getElementById(url.hash.slice(1))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 document.addEventListener('click', (e) => {
