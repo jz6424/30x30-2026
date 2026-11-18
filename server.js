@@ -18,6 +18,9 @@ const DB_FILE = path.join(DATA, 'db.json');
 const UPLOADS = path.join(DATA, 'uploads');
 const PORT = Number(process.env.PORT || 3000);
 const brand = JSON.parse(fs.readFileSync(path.join(ROOT, 'lib/brand.json'), 'utf8'));
+// Set BOOKING_URL (e.g. in Render) to the studio's real booking page.
+if (process.env.BOOKING_URL) brand.bookingUrl = process.env.BOOKING_URL;
+const techById = (id) => brand.techs.find((t) => t.id === id) || null;
 
 fs.mkdirSync(PHOTOS, { recursive: true });
 fs.mkdirSync(UPLOADS, { recursive: true });
@@ -67,7 +70,10 @@ function retakeTip(photo) {
   }[worst] || null;
 }
 
-async function buildPost({ tech, serviceId, option, gel, addons, photos }) {
+async function buildPost({ techId, tech, locationId, serviceId, option, gel, addons, photos }) {
+  const techInfo = techById(techId);
+  if (!techInfo && !tech) throw Object.assign(new Error('Pick who did the set'), { status: 400 });
+  const location = brand.locations.find((l) => l.id === locationId && l.status === 'open') || brand.locations.find((l) => l.status === 'open');
   const id = crypto.randomUUID().slice(0, 8);
   const dir = path.join(PHOTOS, id);
   fs.mkdirSync(dir, { recursive: true });
@@ -109,7 +115,9 @@ async function buildPost({ tech, serviceId, option, gel, addons, photos }) {
   const post = {
     id,
     createdAt: new Date().toISOString(),
-    tech: tech || 'Nail tech',
+    techId: techInfo?.id || null,
+    tech: techInfo?.name || tech || 'Nail tech',
+    locationId: location?.id || null,
     serviceId,
     booking, // service, option, add-ons and price, from lib/brand.json
     status: 'needs_approval',
@@ -206,6 +214,30 @@ async function processPost(id) {
   save();
 }
 
+// ---------- public site data: only approved sets, no captions or drafts ----------
+function publicData() {
+  const gallery = db.posts
+    .filter((p) => (p.status === 'ready' || p.status === 'posted') && p.heroId && !p.stage)
+    .sort((a, b) => new Date(b.approvedAt || b.createdAt) - new Date(a.approvedAt || a.createdAt))
+    .map((p) => ({
+      id: p.id,
+      techId: p.techId,
+      tech: p.tech,
+      locationId: p.locationId || 'dtla',
+      service: p.booking?.serviceName || null,
+      details: p.booking ? [p.booking.name.split(', ').slice(1).join(', '), ...p.booking.addons.filter((a) => !/removal|repair|buff/.test(a.id)).map((a) => a.name)].filter(Boolean) : [],
+      photos: [p.heroId, ...p.carouselIds].map((id) => p.photos.find((x) => x.id === id)).filter(Boolean).map((x) => ({ url: x.url, width: x.width, height: x.height })),
+      approvedAt: p.approvedAt,
+    }));
+  const { name, handle, address, hours, taglines, bookingUrl, instagramUrl, techs, locations, services } = brand;
+  return {
+    brand: { name, handle, address, hours, taglines, bookingUrl, instagramUrl },
+    techs, locations,
+    services: services.map(({ id, name, price, group }) => ({ id, name, price, group })),
+    gallery,
+  };
+}
+
 // ---------- HTTP ----------
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg' };
 
@@ -251,6 +283,7 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, { brand, visionProvider: vp.label, live: vp.name === 'claude', phoneUrl });
       }
       if (req.method === 'GET' && url.pathname === '/api/posts') return send(res, 200, { posts: db.posts });
+      if (req.method === 'GET' && url.pathname === '/api/public') return send(res, 200, publicData());
       if (req.method === 'POST' && url.pathname === '/api/uploads') {
         const buf = await readRaw(req, 20 * 1024 * 1024);
         if (buf.length < 100 || buf[0] !== 0xff || buf[1] !== 0xd8) return send(res, 400, { error: 'That file isn’t a JPEG photo' });
@@ -329,7 +362,11 @@ const server = http.createServer(async (req, res) => {
       return send(res, 404, { error: 'Unknown API route' });
     }
     if (parts[0] === 'photos') return serveFile(res, PHOTOS, parts.slice(1).join('/'));
-    return serveFile(res, PUBLIC, url.pathname === '/' ? 'index.html' : url.pathname);
+    // Staff app (techs upload, Tina approves) lives at /studio.
+    if (parts[0] === 'studio') return serveFile(res, PUBLIC, 'studio.html');
+    // Everything without a file extension is a page of the public site.
+    if (!path.extname(url.pathname)) return serveFile(res, PUBLIC, 'site.html');
+    return serveFile(res, PUBLIC, url.pathname);
   } catch (err) {
     console.error(`[${req.method} ${url.pathname}]`, err.message);
     return send(res, err.status || 500, { error: err.message });

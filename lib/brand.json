@@ -252,5 +252,69 @@
       ]
     }
   ],
-  "menuNote": "Pricing varies with removal, length, shape and design. Confirm the price with the client before service."
+  "menuNote": "Pricing varies with removal, length, shape and design. Confirm the price with the client before service.",
+  "instagramUrl": "https://www.instagram.com/confessionailstudio",
+  "techs": [
+    {
+      "id": "mia",
+      "name": "Mia",
+      "sample": true,
+      "bio": "Clean almond shapes and glassy finishes. Mia loves a chrome French and a quiet 2am appointment.",
+      "instagram": null,
+      "specialties": [
+        "Russian Gel",
+        "Gel X",
+        "Chrome / Cat Eye",
+        "French"
+      ]
+    },
+    {
+      "id": "jasmine",
+      "name": "Jasmine",
+      "sample": true,
+      "bio": "Hand-painted art, charms and anything custom. Bring a reference photo or let her design it.",
+      "instagram": null,
+      "specialties": [
+        "Custom Nails",
+        "Nail Art",
+        "Sculpted Gel"
+      ]
+    },
+    {
+      "id": "kim",
+      "name": "Kim",
+      "sample": true,
+      "bio": "Strong, natural-looking sets that last. Kim is the one to see for fills and repairs.",
+      "instagram": null,
+      "specialties": [
+        "Acrylic",
+        "Builder Gel / Dip",
+        "Hard Gel / Polygel",
+        "Nail Repair"
+      ]
+    }
+  ],
+  "locations": [
+    {
+      "id": "dtla",
+      "name": "Historic Core, DTLA",
+      "status": "open",
+      "address": "724 S Hill St, Los Angeles, CA 90014",
+      "lat": 34.0464,
+      "lng": -118.2538,
+      "hours": "Open 24 hours",
+      "hoursDetail": "Walk-ins 9am to 8pm, appointments any hour after that",
+      "phone": "(323) 508-3169"
+    },
+    {
+      "id": "second",
+      "name": "Second location",
+      "status": "coming-soon",
+      "address": null,
+      "lat": null,
+      "lng": null,
+      "hours": "Coming soon",
+      "hoursDetail": "Opening details to come"
+    }
+  ]
 }

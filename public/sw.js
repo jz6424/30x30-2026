@@ -1,7 +1,7 @@
 // Minimal service worker: makes the app installable and lets the shell open
 // with a weak signal. Network first, cache as fallback; API calls are never cached.
-const CACHE = 'set-to-post-v1';
-const SHELL = ['/', '/app.css', '/app.js', '/quality.js', '/manifest.webmanifest', '/icon.svg', '/icon-192.png', '/icon-512.png', '/icon-180.png'];
+const CACHE = 'confessionail-v2';
+const SHELL = ['/', '/studio', '/site.css', '/site.js', '/app.css', '/app.js', '/quality.js', '/manifest.webmanifest', '/icon.svg', '/icon-192.png', '/icon-512.png', '/icon-180.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -21,6 +21,6 @@ self.addEventListener('fetch', (e) => {
         }
         return res;
       })
-      .catch(() => caches.match(e.request).then((r) => r || caches.match('/'))),
+      .catch(() => caches.match(e.request).then((r) => r || caches.match(url.pathname.startsWith('/studio') ? '/studio' : '/'))),
   );
 });

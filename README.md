@@ -4,6 +4,19 @@ A phone-first hub for Confessionail Studio (24-hour nail salon, DTLA). Nail tech
 
 Built for Converge.AI at Stanford, Nov 20 2026.
 
+## Two sides, one data store
+
+| Path | Who | What |
+|---|---|---|
+| `/studio` | Staff | The hub: techs upload sets (picking who did it from the team list), Tina approves and shares to Instagram |
+| `/` | Clients | Home with the latest work, nail artists and locations |
+| `/tech/:id` | Clients | An artist's page: bio, specialties, Instagram, Book button, and a gallery of their approved sets |
+| `/locations` | Clients | Map (Leaflet + OpenStreetMap), hours, directions and a gallery per location; the second location shows as coming soon |
+
+A set appears on the public pages the moment Tina approves it in `/studio` (the public pages refresh every 4 seconds). Only approved sets and their photos are public; captions, drafts and skipped photos are not.
+
+The team and locations live in `lib/brand.json` (`techs`, `locations`). **The three techs (Mia, Jasmine, Kim) are samples** with made-up bios: replace them with the real team. Set `BOOKING_URL` (for example in Render's environment settings) to the studio's booking page; until then the Book buttons say online booking is coming soon. The staff side has no login yet, so anyone with the `/studio` link can use it.
+
 ## Host it (fixed link for phones)
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/jz6424/30x30-2026)

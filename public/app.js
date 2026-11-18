@@ -4,7 +4,7 @@ const $app = document.getElementById('app');
 const state = {
   config: null,
   posts: [],
-  upload: { tech: localStorage.getItem('tech') || '', serviceId: null, option: null, gel: false, addons: {}, menuOpen: true, results: [], analyzing: 0, sending: false },
+  upload: { techId: localStorage.getItem('techId') || '', serviceId: null, option: null, gel: false, addons: {}, menuOpen: true, results: [], analyzing: 0, sending: false },
   view: { channel: 'ig', editing: false, postsTab: 'needs_approval' },
   filesCache: {},        // postId -> File[] (prefetched so Share runs inside one tap)
   awaitingConfirm: null, // postId shared, ask "Did you post it?" on return
@@ -184,8 +184,8 @@ function renderUpload() {
     <h1>New set</h1>
     <p class="muted">Add photos of one finished set. The app picks the best shots and drafts a caption, and Tina approves before anything is posted.</p>
 
-    <div class="section-label">Your name</div>
-    <input type="text" id="tech" value="${esc(u.tech)}" placeholder="e.g. Kim" autocomplete="name">
+    <div class="section-label">Who did this set?</div>
+    <div class="chips" id="techs">${state.config.brand.techs.map((t) => `<button type="button" class="chip ${u.techId === t.id ? 'on' : ''}" data-tech="${t.id}">${esc(t.name)}</button>`).join('')}</div>
 
     ${menuHtml(u)}
 
@@ -202,11 +202,14 @@ function renderUpload() {
       <button class="link" id="clear" style="margin-top:8px">Start over</button>` : ''}
 
     <div class="bar"><div class="inner">
-      <div class="note">${!u.serviceId ? 'Pick the service first' : !kept.length ? 'Add photos of the set' : `${kept.length} photo${kept.length > 1 ? 's' : ''} ready`}</div>
-      <button class="btn-primary" id="go" ${!u.serviceId || !kept.length || u.analyzing || u.sending ? 'disabled' : ''}>Pick the best shots</button>
+      <div class="note">${!validTech(u) ? 'Pick who did the set' : !u.serviceId ? 'Pick the service first' : !kept.length ? 'Add photos of the set' : `${kept.length} photo${kept.length > 1 ? 's' : ''} ready`}</div>
+      <button class="btn-primary" id="go" ${!validTech(u) || !u.serviceId || !kept.length || u.analyzing || u.sending ? 'disabled' : ''}>Pick the best shots</button>
     </div></div>`;
 
-  document.getElementById('tech').oninput = (e) => { u.tech = e.target.value; localStorage.setItem('tech', u.tech); };
+  document.getElementById('techs').onclick = (e) => {
+    const t = e.target.closest('[data-tech]'); if (!t) return;
+    u.techId = t.dataset.tech; localStorage.setItem('techId', u.techId); renderUpload();
+  };
   document.getElementById('menu').onclick = (e) => {
     const t = e.target.closest('[data-svc],[data-opt],[data-gel],[data-change],[data-addon],[data-aopt]');
     if (!t) return;
@@ -230,6 +233,8 @@ function renderUpload() {
   document.getElementById('clear')?.addEventListener('click', () => { u.results = []; renderUpload(); });
   document.getElementById('go').onclick = sendSet;
 }
+
+const validTech = (u) => state.config.brand.techs.some((t) => t.id === u.techId);
 
 // Two-step menu: pick one service (with its option), then any add-ons.
 function menuHtml(u) {
@@ -332,7 +337,7 @@ async function sendSet() {
     }
     msg('Saving the set');
     const { post } = await api('/api/sets', { method: 'POST', body: {
-        tech: u.tech, serviceId: u.serviceId, option: u.option, gel: u.gel,
+        techId: u.techId, serviceId: u.serviceId, option: u.option, gel: u.gel,
         addons: Object.entries(u.addons).map(([id, option]) => ({ id, option })),
         photos: u.results.map(({ id, name, uploadId, width, height, checks, features, pixelReason, dropped, duplicateOf }) => ({ id, name, uploadId, width, height, checks, features, pixelReason, dropped, duplicateOf })),
     } });
@@ -412,7 +417,8 @@ function renderPosts() {
       <div><b>${avgTaps}</b><span>taps per post</span></div>
       <div><b>${by('posted').length}/${approved.length}</b><span>planned posts shared</span></div>
     </div>
-    <p class="muted small" style="text-align:center">Photo picker: ${esc(state.config.visionProvider)}</p>`;
+    <p class="muted small" style="text-align:center">Photo picker: ${esc(state.config.visionProvider)}</p>
+    <p class="small" style="text-align:center"><a href="/" target="_blank" style="color:var(--gold-ink)">Open the public site</a>, where approved sets appear</p>`;
 
   document.getElementById('seg').onclick = (e) => {
     const t = e.target.closest('[data-t]')?.dataset.t; if (!t) return;

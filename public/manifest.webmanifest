@@ -1,7 +1,8 @@
 {
-  "name": "Set → Post · Confessionail Studio",
-  "short_name": "Set → Post",
-  "start_url": "/#/posts",
+  "name": "Confessionail Studio",
+  "short_name": "Studio",
+  "start_url": "/studio#/posts",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#F6EFE4",
   "theme_color": "#F6EFE4",
